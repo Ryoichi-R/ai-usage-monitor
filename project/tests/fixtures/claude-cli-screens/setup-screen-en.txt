@@ -1,0 +1,5 @@
+ Let's get started
+
+ Choose the text style that looks best with your terminal:
+ ❯ #. Dark mode
+   #. Light mode

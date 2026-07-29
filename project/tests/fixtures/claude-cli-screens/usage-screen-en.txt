@@ -1,0 +1,9 @@
+ Usage
+
+ Current session
+ ██████████░░░░░░░░░░  ##% used
+ Resets in #h ##m
+
+ Current week (all models)
+ ████████░░░░░░░░░░░░  ##% used
+ Resets Sun ## Aug at ##:##
