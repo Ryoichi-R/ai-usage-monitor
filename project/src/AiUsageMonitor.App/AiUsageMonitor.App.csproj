@@ -1,0 +1,45 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationIcon>Assets\ai-usage-monitor.ico</ApplicationIcon>
+    <IncludeNativeLibrariesForSelfExtract Condition="'$(PublishSingleFile)' == 'true'">true</IncludeNativeLibrariesForSelfExtract>
+    <Platforms>AnyCPU;x64;ARM64</Platforms>
+    <UseAppHost Condition="'$(SelfContained)' != 'true'">false</UseAppHost>
+    <NoWarn>$(NoWarn);CA1416;WFO0003</NoWarn>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AiUsageMonitor.Core\AiUsageMonitor.Core.csproj" />
+    <ProjectReference Include="..\AiUsageMonitor.Codex\AiUsageMonitor.Codex.csproj" />
+    <ProjectReference Include="..\AiUsageMonitor.Claude\AiUsageMonitor.Claude.csproj" />
+    <ProjectReference Include="..\AiUsageMonitor.Claude.Windows\AiUsageMonitor.Claude.Windows.csproj" />
+    <ProjectReference Include="..\AiUsageMonitor.Windows\AiUsageMonitor.Windows.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="AiUsageMonitor.App.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Assets\ai-usage-monitor.ico" />
+    <Content Include="Assets\claude-statusline-bridge.ps1">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+      <TargetPath>claude-statusline-bridge.ps1</TargetPath>
+    </Content>
+    <Content Include="..\..\README.md">
+      <Link>README.md</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+      <TargetPath>README.md</TargetPath>
+    </Content>
+  </ItemGroup>
+</Project>

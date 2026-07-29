@@ -1,0 +1,53 @@
+<Window x:Class="AiUsageMonitor.App.ReadmeSectionWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="README — LLMによるセットアップ支援（非推奨）"
+        Icon="Assets/ai-usage-monitor.ico"
+        Width="760"
+        Height="700"
+        MinWidth="620"
+        MinHeight="480"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize"
+        ShowInTaskbar="False">
+  <DockPanel Margin="20">
+    <StackPanel DockPanel.Dock="Bottom"
+                Margin="0,14,0,0">
+      <TextBlock x:Name="OpenReadmeMessageText"
+                 Margin="0,0,0,8"
+                 Foreground="#4488CC"
+                 TextWrapping="Wrap" />
+      <StackPanel Orientation="Horizontal"
+                  HorizontalAlignment="Right">
+        <Button x:Name="OpenFullReadmeButton"
+                Content="README全体を既定のアプリで開く"
+                Padding="12,6"
+                Margin="0,0,8,0"
+                Click="OpenFullReadme" />
+        <Button Content="閉じる"
+                MinWidth="96"
+                Padding="12,6"
+                IsDefault="True"
+                IsCancel="True" />
+      </StackPanel>
+    </StackPanel>
+    <StackPanel DockPanel.Dock="Top">
+      <TextBlock Text="READMEの該当案内"
+                 FontSize="22"
+                 FontWeight="SemiBold" />
+      <TextBlock Text="READMEから「LLMによるセットアップ支援（非推奨）」を直接表示しています。内容を選択してコピーできます。"
+                 Margin="0,6,0,14"
+                 Foreground="Gray"
+                 TextWrapping="Wrap" />
+    </StackPanel>
+    <TextBox x:Name="ReadmeSectionBox"
+             IsReadOnly="True"
+             AcceptsReturn="True"
+             TextWrapping="Wrap"
+             VerticalScrollBarVisibility="Auto"
+             HorizontalScrollBarVisibility="Disabled"
+             FontFamily="Consolas"
+             FontSize="13"
+             Padding="12" />
+  </DockPanel>
+</Window>

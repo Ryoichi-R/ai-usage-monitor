@@ -1,0 +1,30 @@
+  Usage:                 # input, # output, # cache read, # cache write
+
+  Current session
+                                                     #% used
+  Resets #pm (Asia/Tokyo)
+
+  Current week (all models)
+  ██████████████████████                             ##% used
+  Resets Jul ##, #pm (Asia/Tokyo)
+  +##% weekly limits promo through Aug ## · clau.de/cc-##-promo
+
+  What's contributing to your limits usage?
+  Approximate, based on local sessions on this machine — does not include other devices or claude.ai
+
+  Last ##h · these are independent characteristics of your usage, not a breakdown
+
+  ##% of your usage was at >###k context
+   Longer sessions are more expensive even when cached. /compact mid-task, /clear
+   when switching to new tasks.
+
+  Skills, subagents, plugins, and MCP servers
+  No attribution data yet · accumulates as you use Claude
+
+  d to day · w to week
+
+  Usage credits
+  Usage credits are off · /usage-credits to turn them on
+
+  Esc to cancel
+
