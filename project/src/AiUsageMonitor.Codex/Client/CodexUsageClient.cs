@@ -67,6 +67,7 @@ public sealed class CodexUsageClient : IAsyncDisposable
                 InvalidOperationException or
                 JsonException or
                 EndOfStreamException or
+                IOException or
                 System.ComponentModel.Win32Exception)
         {
             await ResetAsync().ConfigureAwait(false);

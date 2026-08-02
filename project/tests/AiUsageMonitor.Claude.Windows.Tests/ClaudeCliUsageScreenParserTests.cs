@@ -267,6 +267,38 @@ public sealed class ClaudeCliUsageScreenParserTests
                 observedAt).Reason);
     }
 
+    [Fact]
+    public void ZoneOmittedResetUsesInjectedLocalZoneOutsideTokyo()
+    {
+        TimeZoneInfo pacific =
+            TimeZoneInfo.FindSystemTimeZoneById("Pacific Standard Time");
+        DateTimeOffset observedAt = TimeZoneInfo.ConvertTime(
+            new DateTimeOffset(2026, 7, 26, 20, 0, 0, TimeSpan.Zero),
+            pacific);
+
+        UsageSnapshot result = ClaudeCliUsageScreenParser.Parse(
+        [
+            "Current session",
+            "48% used",
+            "Resets 2pm",
+            "Current week (all models)",
+            "32% used",
+            "Resets Jul 29, 1pm",
+            "What's contributing",
+        ],
+        observedAt,
+        "2.1.218",
+        pacific);
+
+        Assert.Equal(UsageAvailability.Available, result.Availability);
+        Assert.Equal(
+            new DateTimeOffset(2026, 7, 26, 21, 0, 0, TimeSpan.Zero),
+            result.Windows[0].ResetsAt);
+        Assert.Equal(
+            new DateTimeOffset(2026, 7, 29, 20, 0, 0, TimeSpan.Zero),
+            result.Windows[1].ResetsAt);
+    }
+
     [Theory]
     [InlineData("Resets 2pm")]
     [InlineData("Resets 2pm (Asia/Tokyo)")]
@@ -359,7 +391,8 @@ public sealed class ClaudeCliUsageScreenParserTests
             "What's contributing",
         ],
         observedAt,
-        "2.1.218");
+        "2.1.218",
+        Tokyo);
 
     private static string DefaultWeekReset(DateTimeOffset observedAt)
     {

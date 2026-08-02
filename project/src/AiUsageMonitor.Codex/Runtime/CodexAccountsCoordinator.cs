@@ -402,6 +402,28 @@ public sealed class CodexAccountsCoordinator : IAsyncDisposable
 
             return new(runtime, snapshot);
         }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            // account/readやRPC層で未分類の例外が起きても、このアカウントの失敗として
+            // 扱うだけに留める。ここで再送出するとTask.WhenAllがfaultし、他アカウントの
+            // 結果も含めてperiodic pollingのループ全体が停止してしまう。
+            completedAt = _timeProvider.GetUtcNow();
+            if (!IsCurrent(runtime))
+                return null;
+            runtime.LastSuccessfulAt = null;
+            UsageSnapshot fallback = new(
+                UsageProvider.Codex,
+                completedAt,
+                DateTimeOffset.UtcNow,
+                UsageAvailability.Unavailable,
+                "CODEX_ACCOUNT_READ_EXCEPTION",
+                null,
+                [],
+                null,
+                false,
+                null);
+            return new(runtime, fallback);
+        }
         finally
         {
             pendingAuthoritativeNotification = runtime.TakeAuthoritativeNotification();
@@ -909,6 +931,12 @@ public sealed class CodexAccountsCoordinator : IAsyncDisposable
                 _notificationCts?.Dispose();
                 _notificationCts = null;
             }
+            // 進行中のReadOneAsyncはGateを保持したままawaitしており、完了時のfinallyで
+            // Release()する。ここでいきなりGate.Dispose()するとそのRelease()が
+            // ObjectDisposedExceptionでfaultし、periodic pollingのループごと停止する。
+            // 直前のClient.DisposeAsync()でRPCは速やかに終端するため、ここでの待機は
+            // 実質的に「finally完了待ち」程度で済む。
+            await Gate.WaitAsync().ConfigureAwait(false);
             Gate.Dispose();
         }
     }

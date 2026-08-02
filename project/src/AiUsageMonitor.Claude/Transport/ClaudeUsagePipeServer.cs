@@ -26,12 +26,23 @@ public sealed class ClaudeUsagePipeServer : IAsyncDisposable
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            var pipe = new NamedPipeServerStream(
-                _pipeName,
-                PipeDirection.In,
-                1,
-                PipeTransmissionMode.Byte,
-                PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+            NamedPipeServerStream pipe;
+            try
+            {
+                pipe = new NamedPipeServerStream(
+                    _pipeName,
+                    PipeDirection.In,
+                    1,
+                    PipeTransmissionMode.Byte,
+                    PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                // 同名パイプの生成に失敗した場合（別セッションでの多重起動などで発生しうる）、
+                // busy loopにならないよう間隔を空けてから再試行する。
+                await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken).ConfigureAwait(false);
+                continue;
+            }
             await using (pipe.ConfigureAwait(false))
             {
                 try
@@ -75,7 +86,7 @@ public sealed class ClaudeUsagePipeServer : IAsyncDisposable
         if (_listener is not null)
         {
             try { await _listener.ConfigureAwait(false); }
-            catch (OperationCanceledException) { }
+            catch (Exception) { }
         }
         _lifetime.Dispose();
     }

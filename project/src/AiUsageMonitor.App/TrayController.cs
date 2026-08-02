@@ -34,5 +34,11 @@ public sealed class TrayController : IDisposable
         _icon = new Forms.NotifyIcon { Visible = true, Text = "AI Usage Monitor", Icon = _trayIcon, ContextMenuStrip = menu };
         _icon.DoubleClick += (_, _) => SettingsRequested?.Invoke();
     }
-    public void Dispose() { _icon.Visible = false; _icon.Dispose(); _trayIcon.Dispose(); }
+    public void Dispose()
+    {
+        _icon.Visible = false;
+        _icon.ContextMenuStrip?.Dispose();
+        _icon.Dispose();
+        _trayIcon.Dispose();
+    }
 }

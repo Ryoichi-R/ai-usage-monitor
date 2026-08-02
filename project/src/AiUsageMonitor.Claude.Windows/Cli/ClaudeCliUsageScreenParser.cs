@@ -7,11 +7,22 @@ namespace AiUsageMonitor.Claude.Windows.Cli;
 /// <summary>Claude CLIのaccessibility向け/usage画面から既知の2枠だけを厳格に抽出する。</summary>
 public static partial class ClaudeCliUsageScreenParser
 {
+    private static readonly TimeZoneInfo TokyoTimeZone =
+        TimeZoneInfo.FindSystemTimeZoneById("Tokyo Standard Time");
+
     public static UsageSnapshot Parse(
         IReadOnlyList<string> lines,
         DateTimeOffset observedAt,
-        string? version)
+        string? version) =>
+        Parse(lines, observedAt, version, TimeZoneInfo.Local);
+
+    public static UsageSnapshot Parse(
+        IReadOnlyList<string> lines,
+        DateTimeOffset observedAt,
+        string? version,
+        TimeZoneInfo localTimeZone)
     {
+        ArgumentNullException.ThrowIfNull(localTimeZone);
         if (lines.Count == 0 || lines.Count > ClaudeCliScreenStateMachine.MaximumLines)
             return Failure(observedAt, version);
 
@@ -20,13 +31,15 @@ public static partial class ClaudeCliUsageScreenParser
             ["Current session", "現在のセッション"],
             ["Current week (all models)", "今週（すべてのモデル）"],
             observedAt,
-            UsageWindowPolicy.FiveHourDurationMinutes);
+            UsageWindowPolicy.FiveHourDurationMinutes,
+            localTimeZone);
         SectionResult week = ParseSection(
             lines,
             ["Current week (all models)", "今週（すべてのモデル）"],
             ["What's contributing", "利用上限への影響", "Usage credits", "使用クレジット", "使用量クレジット", "Esc to cancel"],
             observedAt,
-            UsageWindowPolicy.SevenDayDurationMinutes);
+            UsageWindowPolicy.SevenDayDurationMinutes,
+            localTimeZone);
 
         if (!session.Success || !week.Success)
         {
@@ -62,7 +75,8 @@ public static partial class ClaudeCliUsageScreenParser
         string[] anchors,
         string[] terminators,
         DateTimeOffset observedAt,
-        int expectedDurationMinutes)
+        int expectedDurationMinutes,
+        TimeZoneInfo localTimeZone)
     {
         int start = FindUniqueAnchor(lines, anchors);
         if (start < 0) return default;
@@ -108,7 +122,8 @@ public static partial class ClaudeCliUsageScreenParser
             ResetParseResult resetResult = TryParseReset(
                 line,
                 observedAt,
-                expectedDurationMinutes);
+                expectedDurationMinutes,
+                localTimeZone);
             if (resetResult.Matched && resetResult.Success)
             {
                 reset = resetResult.Reset;
@@ -143,7 +158,8 @@ public static partial class ClaudeCliUsageScreenParser
     private static ResetParseResult TryParseReset(
         string line,
         DateTimeOffset observedAt,
-        int expectedDurationMinutes)
+        int expectedDurationMinutes,
+        TimeZoneInfo localTimeZone)
     {
         Match relative = JapaneseRelativeResetRegex().Match(line);
         if (relative.Success)
@@ -204,8 +220,7 @@ public static partial class ClaudeCliUsageScreenParser
         Match japaneseAbsolute = JapaneseAbsoluteResetRegex().Match(line);
         if (japaneseAbsolute.Success)
         {
-            TimeZoneInfo japaneseZone = TimeZoneInfo.FindSystemTimeZoneById("Tokyo Standard Time");
-            DateTime japaneseNow = TimeZoneInfo.ConvertTime(observedAt, japaneseZone).DateTime;
+            DateTime japaneseNow = TimeZoneInfo.ConvertTime(observedAt, TokyoTimeZone).DateTime;
             if (!TryParseInt(japaneseAbsolute.Groups["month"], out int month) ||
                 !TryParseInt(japaneseAbsolute.Groups["day"], out int day) ||
                 !TryParseInt(japaneseAbsolute.Groups["hour"], out int hour) ||
@@ -241,7 +256,7 @@ public static partial class ClaudeCliUsageScreenParser
                     expectedDurationMinutes);
             }
 
-            DateTimeOffset candidate = TimeZoneInfo.ConvertTimeToUtc(localCandidate, japaneseZone);
+            DateTimeOffset candidate = TimeZoneInfo.ConvertTimeToUtc(localCandidate, TokyoTimeZone);
             return Candidate(
                 candidate,
                 observedAt,
@@ -307,7 +322,11 @@ public static partial class ClaudeCliUsageScreenParser
                 expectedDurationMinutes);
         }
 
-        TimeZoneInfo zone = TimeZoneInfo.FindSystemTimeZoneById("Tokyo Standard Time");
+        TimeZoneInfo zone = zoneCategory switch
+        {
+            "asia_tokyo" or "tokyo_standard_time" => TokyoTimeZone,
+            _ => localTimeZone,
+        };
         DateTime localNow = TimeZoneInfo.ConvertTime(observedAt, zone).DateTime;
         bool hasDate = remainder.Contains(',', StringComparison.Ordinal);
         string parseValue = hasDate ? $"{localNow.Year} {remainder}" : remainder;

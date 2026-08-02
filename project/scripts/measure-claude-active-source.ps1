@@ -13,6 +13,11 @@ $testProject = Join-Path $projectRoot 'tests\AiUsageMonitor.Claude.Windows.Tests
 $testName = 'AiUsageMonitor.Claude.Windows.Tests.ActualClaudeCliSmokeTests.ApprovedOfficialCliReturnsTwoStrictlyParsedWindows'
 $claudePath = [Environment]::GetEnvironmentVariable('CODEX_USAGE_MONITOR_ACTUAL_CLAUDE')
 $helperPath = [Environment]::GetEnvironmentVariable('CODEX_USAGE_MONITOR_ACTUAL_HELPER')
+$testArtifactsRoot = Join-Path ([IO.Path]::GetTempPath()) ('AiUsageMonitorActualClaude-' + [Guid]::NewGuid().ToString('N'))
+$artifactsArguments = @(
+    '--artifacts-path', $testArtifactsRoot,
+    ('-p:ArtifactsPath=' + $testArtifactsRoot)
+)
 
 if ([string]::IsNullOrWhiteSpace($claudePath) -or -not (Test-Path -LiteralPath $claudePath -PathType Leaf)) {
     throw 'CODEX_USAGE_MONITOR_ACTUAL_CLAUDE must name the approved official Claude executable.'
@@ -30,17 +35,19 @@ if ([string]::IsNullOrWhiteSpace($publisher)) {
     throw 'Claude executable publisher is unavailable.'
 }
 
-& dotnet build $testProject -c Release --nologo
-if ($LASTEXITCODE -ne 0) {
-    throw "Test build failed with exit code $LASTEXITCODE."
-}
-
 $previousTimeout = [Environment]::GetEnvironmentVariable(
     'CODEX_USAGE_MONITOR_ACTUAL_STARTUP_TIMEOUT_SECONDS',
+    [EnvironmentVariableTarget]::Process)
+$previousArtifactsRoot = [Environment]::GetEnvironmentVariable(
+    'AI_USAGE_MONITOR_TEST_ARTIFACTS_ROOT',
     [EnvironmentVariableTarget]::Process)
 [Environment]::SetEnvironmentVariable(
     'CODEX_USAGE_MONITOR_ACTUAL_STARTUP_TIMEOUT_SECONDS',
     $StartupTimeoutSeconds.ToString([Globalization.CultureInfo]::InvariantCulture),
+    [EnvironmentVariableTarget]::Process)
+[Environment]::SetEnvironmentVariable(
+    'AI_USAGE_MONITOR_TEST_ARTIFACTS_ROOT',
+    $testArtifactsRoot,
     [EnvironmentVariableTarget]::Process)
 
 $results = [Collections.Generic.List[object]]::new()
@@ -54,6 +61,16 @@ function ConvertTo-UtcCreationTime {
 }
 
 try {
+    New-Item -ItemType Directory -Path $testArtifactsRoot -Force | Out-Null
+    & dotnet restore $testProject --nologo @artifactsArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "Test restore failed with exit code $LASTEXITCODE."
+    }
+    & dotnet build $testProject -c Release --no-restore --nologo @artifactsArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "Test build failed with exit code $LASTEXITCODE."
+    }
+
     for ($iteration = 1; $iteration -le $Count; $iteration++) {
         $startedAt = [DateTimeOffset]::Now
         $arguments = @(
@@ -61,9 +78,10 @@ try {
             $testProject,
             '-c', 'Release',
             '--no-build',
+            '--no-restore',
             '--nologo',
             '--filter', "FullyQualifiedName=$testName"
-        )
+        ) + $artifactsArguments
         $rootProcess = Start-Process -FilePath 'dotnet' -ArgumentList $arguments -PassThru -WindowStyle Hidden
         $owned = [Collections.Generic.Dictionary[int, DateTime]]::new()
         $ownedNames = [Collections.Generic.Dictionary[int, string]]::new()
@@ -153,6 +171,13 @@ finally {
         'CODEX_USAGE_MONITOR_ACTUAL_STARTUP_TIMEOUT_SECONDS',
         $previousTimeout,
         [EnvironmentVariableTarget]::Process)
+    [Environment]::SetEnvironmentVariable(
+        'AI_USAGE_MONITOR_TEST_ARTIFACTS_ROOT',
+        $previousArtifactsRoot,
+        [EnvironmentVariableTarget]::Process)
+    if (Test-Path -LiteralPath $testArtifactsRoot -PathType Container) {
+        Remove-Item -LiteralPath $testArtifactsRoot -Recurse -Force
+    }
 }
 
 $results | Format-Table Iteration, WallSeconds, ExitCode, Timeout, MaxConcurrentClaude, OwnedProcessesAfter10Seconds
