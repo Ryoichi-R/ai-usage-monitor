@@ -31,7 +31,7 @@ public sealed class CodexExecutableLocator
         string full;
         try { full = Path.GetFullPath(Environment.ExpandEnvironmentVariables(candidate)); }
         catch (Exception exception) when (exception is ArgumentException or NotSupportedException or PathTooLongException) { return null; }
-        if (!File.Exists(full)) return null;
+        if (!File.Exists(full) || IsNetworkPath(full)) return null;
         if (string.Equals(Path.GetExtension(full), ".exe", StringComparison.OrdinalIgnoreCase)) return full;
 
         string packageRoot = Path.Combine(Path.GetDirectoryName(full)!, "node_modules", "@openai", "codex");
@@ -51,6 +51,22 @@ public sealed class CodexExecutableLocator
             if (File.Exists(native)) return Path.GetFullPath(native);
         }
         return null;
+    }
+
+    private static bool IsNetworkPath(string path)
+    {
+        if (path.StartsWith(@"\\", StringComparison.Ordinal))
+            return true;
+        try
+        {
+            string? root = Path.GetPathRoot(path);
+            return !string.IsNullOrEmpty(root) && new DriveInfo(root).DriveType == DriveType.Network;
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            return true;
+        }
     }
 
     private static bool ValidPackage(string directory, string expectedName)

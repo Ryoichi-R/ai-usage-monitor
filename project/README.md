@@ -6,7 +6,7 @@ OpenAIおよびAnthropic非公式のWindows用デスクトップウィジェッ�
 
 - Windows 11
 - Codex監視を使う場合: Codex CLIまたはCodex Desktopがインストール済みで、ChatGPTアカウントへログイン済み
-- Claude監視を使う場合: 公式Claude Code CLIがインストール済みで、Anthropicアカウントへログイン済み
+- Claude監視を使う場合: 公式Claude Code CLIの**native installer版**がインストール済みで、Anthropicアカウントへログイン済み。既定の探索先は`%USERPROFILE%\.local\bin\claude.exe`、`%LOCALAPPDATA%\Programs\claude\claude.exe`、`%LOCALAPPDATA%\ClaudeCode\claude.exe`で、Authenticode署名のpublisherが`Anthropic, PBC`であることを要求します。パッケージマネージャー経由でインストールしたshim/ラッパー形式の`claude`はこれらの既定探索先や署名要件を満たさないことがあり、その場合は設定画面でnative実行ファイルの絶対パスを明示指定してください
 
 アプリ自身は認証ファイル、ブラウザーcookie、トークンを読み取りません。非公開Web APIも使用しません。
 
@@ -24,7 +24,7 @@ dotnet run --project .\src\AiUsageMonitor.App\AiUsageMonitor.App.csproj
 
 引数なしでダブルクリックすると保存先の既存親フォルダーを選択できます。`project`を選ぶと`project/artifacts/ai-usage-monitor-<runtime>/`へ生成します。外部の親フォルダーを選ぶと、`<選択先>/AiUsageMonitorBuilds/ai-usage-monitor-<runtime>/`へ生成します。利用者向けrootと、その配下かつ`project`外のフォルダーは選択できません。単一の既存フォルダーをバッチへドラッグ＆ドロップして指定することもできます。相対pathは`project`基準です。ファイル、存在しないパス、複数パスはbuild前に拒否します。
 
-処理はReleaseのrestore、clean、build、OS一時領域へのstaging publish、single-file apphostのPE architecture確認を行い、すべて成功した後だけ最終出力の内容を更新します。同期フォルダ内で成果物フォルダ自体を連続リネームしないため、Google Drive等の同期クライアントと競合しません。直前の成果物は同じ管理ルートの`_backup-ai-usage-monitor-<runtime>/`へ1世代残ります。更新対象からアプリを起動している場合は、通知領域から終了してから再実行してください。更新中に失敗した場合は、その実行で作成・検証したbackupの内容だけを現行フォルダへ自動復旧します。
+処理はReleaseのrestore、clean、build、OS一時領域へのstaging publish、single-file apphostのPE architecture確認を行い、すべて成功した後だけ最終出力の内容を更新します。同期フォルダ内で成果物フォルダ自体を連続リネームしないため、Google Drive等の同期クライアントと競合しません。直前の成果物は`%LOCALAPPDATA%\AiUsageMonitorBackups\_backup-ai-usage-monitor-<runtime>\`（成果物フォルダーと同じ管理ルートではなく、同期対象外のユーザーローカル領域）へ1世代残ります。更新対象からアプリを起動している場合は、通知領域から終了してから再実行してください。更新中に失敗した場合は、その実行で作成・検証したbackupの内容だけを現行フォルダへ自動復旧します。
 
 EXEと`claude-statusline-bridge.ps1`は同じフォルダーで保持してください。出力先を変更した場合、Windows自動起動とClaude CodeのstatusLine設定に保存された絶対パスは自動追従しません。新しいEXEを明示的に起動し、その設定画面で自動起動を保存し直してください。Claude Code連携を使う場合は、新しいEXEの設定画面から設定例を再コピーしてください。旧EXEで自動起動を保存し直すと旧パスが再登録されます。
 
@@ -78,6 +78,8 @@ AI Usage Monitorの第一者コードは[MIT License](LICENSE)で提供します
 
 `/usage`の段階描画中に見出しだけが先に現れた場合は、genericな不完全画面だけを起動timeout内で再読込します。reset形式やtime zoneの明確な不一致は従来どおりfail-closedとし、値を推測しません。
 
+reset時刻のtime zone未表記は、Claude CLIを実行しているWindowsのローカルタイムゾーンとして解釈します（下記「reset時刻と取得日時」参照）。
+
 取得方法は「自動（公式CLI優先、statusLineは参考）」「statusLineのみ（受信時刻・最新性未保証）」「公式CLIの自動取得のみ」から選べます。常駐CLIのpassive statusLineも使う場合だけ、設定画面の詳細欄にある設定例を手動で反映します。`refreshInterval`はローカルcommandの再実行間隔で、クラウド利用率のpolling時刻ではありません。アプリはユーザーの`.claude/settings*.json`を編集しません。
 
 接続テストまたはstatusLineで取得した値は、アプリのprocess内では設定画面を保存しても維持します。使用率の実値はsettingsへ保存しません。このためアプリ再起動後に「statusLineのみ」を使用している場合は、最初のstatusLineが届くまで「接続済み — 利用情報を待っています」と表示します。接続テスト済みであることと、現在の利用情報を受信済みであることは別々に扱います。
@@ -110,7 +112,7 @@ AI Usage Monitorの第一者コードは[MIT License](LICENSE)で提供します
 # reset時刻と取得日時
 
 Claude `/usage` のreset時刻は、5時間枠・7日間枠それぞれの期間内にある未来時刻だけを受理します。
-日付のない過去時刻は原則として翌日へ推測しません。ただし5時間枠のTokyo time-only表記だけは、
+日付のない過去時刻は原則として翌日へ推測しません。ただし5時間枠のtime-only表記だけは、
 翌日候補が5時間＋2分以内に収まる場合に限って受理します。週間枠、範囲外候補、未対応の表記、
 東京以外の明示タイムゾーンは誤変換を避けるため取得失敗として扱います。表示中の値には正常取得日時を表示し、
 更新失敗または期限切れ時は「最終取得時間」として最後の成功時刻を維持します。

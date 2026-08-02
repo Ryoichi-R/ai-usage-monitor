@@ -115,6 +115,29 @@ public sealed class CodexAppServerProcessTests
     }
 
     [Fact]
+    public async Task UsageClientReportsNotInstalledWhenExecutableMissing()
+    {
+        string? originalPath = Environment.GetEnvironmentVariable("PATH");
+        try
+        {
+            Environment.SetEnvironmentVariable("PATH", string.Empty);
+            await using var client = new CodexUsageClient(new(
+                Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"), "missing-codex.exe"),
+                null,
+                TimeSpan.FromSeconds(1)));
+
+            UsageSnapshot result = await client.ReadAsync(CancellationToken.None);
+
+            Assert.Equal(UsageAvailability.NotInstalled, result.Availability);
+            Assert.Equal("CODEX_NOT_FOUND", result.Reason);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("PATH", originalPath);
+        }
+    }
+
+    [Fact]
     public async Task FixedClientsKeepCodexHomesAndValuesIsolated()
     {
         string root = Path.Combine(Path.GetTempPath(), "codex-monitor-tests-" + Guid.NewGuid().ToString("N"));

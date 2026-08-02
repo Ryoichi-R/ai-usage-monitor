@@ -156,6 +156,13 @@ public sealed class ClaudeCliActiveSource : IClaudeUsageSource
         DateTimeOffset deadline = DateTimeOffset.UtcNow + _startupTimeout;
         bool usageSent = false;
         UsageSnapshot? lastIncompleteUsageScreen = null;
+        // 画面confirmationのたびに（helperを経由して）monitor本体の実行ファイルを
+        // 子processとして起動し直している。固定100msだと1回のusage取得で数十回spawn
+        // しうるため、進捗がない待ち区間だけ間隔を広げてspawn頻度を下げる。
+        // 入力直後の遷移確認（usage送信直後・Ready検出直後）は反応の速さを優先し、
+        // 変えない。
+        int idlePollDelayMs = 250;
+        const int MaximumIdlePollDelayMs = 600;
         while (DateTimeOffset.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -168,7 +175,8 @@ public sealed class ClaudeCliActiveSource : IClaudeUsageSource
                 cancellationToken).ConfigureAwait(false);
             if (!screen.Ok)
             {
-                await Task.Delay(250, cancellationToken).ConfigureAwait(false);
+                await Task.Delay(idlePollDelayMs, cancellationToken).ConfigureAwait(false);
+                idlePollDelayMs = Math.Min(idlePollDelayMs + 100, MaximumIdlePollDelayMs);
                 continue;
             }
 
@@ -228,7 +236,8 @@ public sealed class ClaudeCliActiveSource : IClaudeUsageSource
                     break;
                 case ClaudeCliScreenSignature.Unknown:
                 default:
-                    await Task.Delay(250, cancellationToken).ConfigureAwait(false);
+                    await Task.Delay(idlePollDelayMs, cancellationToken).ConfigureAwait(false);
+                    idlePollDelayMs = Math.Min(idlePollDelayMs + 100, MaximumIdlePollDelayMs);
                     break;
             }
         }

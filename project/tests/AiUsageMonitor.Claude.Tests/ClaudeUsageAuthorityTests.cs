@@ -211,6 +211,64 @@ public sealed class ClaudeUsageAuthorityTests
         Assert.Equal(Now.AddMinutes(1), states.Passive.LastSuccessfulAt);
     }
 
+    [Fact]
+    public void StatusLineOnlyReportsMissingPassiveReceiptWhenNeverObserved()
+    {
+        var store = new ClaudeUsageStateStore();
+        var policy = new ClaudeUsageFreshnessPolicy(300);
+        var states = store.Read(Now, policy);
+
+        ClaudeUsageSelection selected = ClaudeUsageSourceSelector.Select(
+            ClaudeUsageAcquisitionMode.StatusLineOnly,
+            states.Active,
+            states.Passive,
+            Now,
+            policy);
+
+        Assert.Null(selected.Source);
+        Assert.Equal("NO_FRESH_PASSIVE", selected.Reason);
+        Assert.Equal(ClaudeUsageFreshnessKind.None, selected.FreshnessKind);
+    }
+
+    [Fact]
+    public void StatusLineOnlyReportsStalePassiveReceipt()
+    {
+        var store = new ClaudeUsageStateStore();
+        store.CommitPassive(Snapshot(40, Now.AddMinutes(-20)));
+        var policy = new ClaudeUsageFreshnessPolicy(300);
+        var states = store.Read(Now, policy);
+
+        ClaudeUsageSelection selected = ClaudeUsageSourceSelector.Select(
+            ClaudeUsageAcquisitionMode.StatusLineOnly,
+            states.Active,
+            states.Passive,
+            Now,
+            policy);
+
+        Assert.Null(selected.Source);
+        Assert.Equal("NO_FRESH_PASSIVE", selected.Reason);
+        Assert.Equal(ClaudeUsageFreshnessKind.StatusLineReceipt, selected.FreshnessKind);
+    }
+
+    [Fact]
+    public void AutomaticReportsNoFreshObservationWhenBothChannelsAreEmpty()
+    {
+        var store = new ClaudeUsageStateStore();
+        var policy = new ClaudeUsageFreshnessPolicy(300);
+        var states = store.Read(Now, policy);
+
+        ClaudeUsageSelection selected = ClaudeUsageSourceSelector.Select(
+            ClaudeUsageAcquisitionMode.Automatic,
+            states.Active,
+            states.Passive,
+            Now,
+            policy);
+
+        Assert.Null(selected.Source);
+        Assert.Equal("NO_FRESH_OBSERVATION", selected.Reason);
+        Assert.Equal(ClaudeUsageFreshnessKind.None, selected.FreshnessKind);
+    }
+
     private static UsageSnapshot Snapshot(double used, DateTimeOffset at) =>
         new(
             UsageProvider.Claude,

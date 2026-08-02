@@ -23,7 +23,14 @@ try {
     }
     $bytes = [Text.Encoding]::UTF8.GetBytes(($minimal | ConvertTo-Json -Depth 5 -Compress))
     if ($bytes.Length -gt 16384) { exit 0 }
-    $pipe = [IO.Pipes.NamedPipeClientStream]::new('.', $PipeName, [IO.Pipes.PipeDirection]::Out)
+    # CurrentUserOnly exists in modern .NET, but not in the .NET Framework used by
+    # Windows PowerShell 5.1. Use it when available and retain the server-side
+    # CurrentUserOnly boundary plus the legacy client constructor on 5.1.
+    $pipeOptions = [IO.Pipes.PipeOptions]::Asynchronous
+    if ([Enum]::GetNames([IO.Pipes.PipeOptions]) -contains 'CurrentUserOnly') {
+        $pipeOptions = $pipeOptions -bor [IO.Pipes.PipeOptions]::CurrentUserOnly
+    }
+    $pipe = [IO.Pipes.NamedPipeClientStream]::new('.', $PipeName, [IO.Pipes.PipeDirection]::Out, $pipeOptions)
     try {
         $pipe.Connect(100)
         $pipe.Write($bytes, 0, $bytes.Length)

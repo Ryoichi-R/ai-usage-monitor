@@ -30,6 +30,7 @@ public sealed class StatusLineBridgePipeNameTests
     {
         string script = File.ReadAllText(BridgePath);
         Assert.Contains($"[string]$PipeName = '{ClaudeUsagePipeServer.PipeName}'", script, StringComparison.Ordinal);
+        Assert.Contains("[IO.Pipes.PipeOptions]::CurrentUserOnly", script, StringComparison.Ordinal);
         // 固定名のハードコードが残っていないこと（$PipeName 経由でのみ接続する）。
         Assert.DoesNotContain($"'.', '{ClaudeUsagePipeServer.PipeName}'", script, StringComparison.Ordinal);
     }

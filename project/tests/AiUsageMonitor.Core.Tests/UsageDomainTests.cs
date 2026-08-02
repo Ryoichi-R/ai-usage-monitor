@@ -155,6 +155,149 @@ public sealed class UsageDomainTests
     }
 
     [Fact]
+    public async Task ConcurrentSettingsSavesAreSerializedAndLeaveNoSharedTempFile()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "AiUsageMonitor.Tests", Guid.NewGuid().ToString("N"));
+        string path = Path.Combine(directory, "settings.json");
+        try
+        {
+            Directory.CreateDirectory(directory);
+            using var store = new FileSystemSettingsStore(path);
+            Task[] saves = Enumerable.Range(0, 12)
+                .Select(index => store.SaveAsync(new AppSettings
+                {
+                    UiScalePercent = 75 + index,
+                    HorizontalMarginDip = index,
+                }))
+                .ToArray();
+
+            await Task.WhenAll(saves);
+            AppSettings result = await store.LoadAsync();
+
+            Assert.InRange(result.UiScalePercent, 75, 86);
+            Assert.Empty(Directory.EnumerateFiles(directory, "*.tmp"));
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, true);
+        }
+    }
+
+    [Fact]
+    public async Task CorruptPrimaryAndBackupFallBackToDefaultsAndArchivePrimary()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "AiUsageMonitor.Tests", Guid.NewGuid().ToString("N"));
+        string path = Path.Combine(directory, "settings.json");
+        try
+        {
+            Directory.CreateDirectory(directory);
+            await File.WriteAllTextAsync(path, "{ broken primary");
+            await File.WriteAllTextAsync(path + ".bak", "[ broken backup");
+            using var store = new FileSystemSettingsStore(path);
+
+            AppSettings result = await store.LoadAsync();
+
+            Assert.True(result.ShowCodexUsage);
+            Assert.True(File.Exists(path + ".corrupt"));
+            Assert.True(File.Exists(path + ".bak"));
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, true);
+        }
+    }
+
+    [Fact]
+    public async Task CorruptPrimaryFallsBackToValidBackup()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "AiUsageMonitor.Tests", Guid.NewGuid().ToString("N"));
+        string path = Path.Combine(directory, "settings.json");
+        try
+        {
+            Directory.CreateDirectory(directory);
+            await File.WriteAllTextAsync(path, "{ broken primary");
+            await File.WriteAllTextAsync(path + ".bak", "{\"SchemaVersion\":1,\"ShowCodexUsage\":false}");
+            using var store = new FileSystemSettingsStore(path);
+
+            AppSettings result = await store.LoadAsync();
+
+            Assert.False(result.ShowCodexUsage);
+            Assert.False(File.Exists(path + ".corrupt"));
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, true);
+        }
+    }
+
+    [Fact]
+    public async Task SavingExistingSettingsCreatesBackup()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "AiUsageMonitor.Tests", Guid.NewGuid().ToString("N"));
+        string path = Path.Combine(directory, "settings.json");
+        try
+        {
+            Directory.CreateDirectory(directory);
+            using var store = new FileSystemSettingsStore(path);
+            await store.SaveAsync(new AppSettings { ShowCodexUsage = true });
+            await store.SaveAsync(new AppSettings { ShowCodexUsage = false });
+
+            AppSettings current = await store.LoadAsync();
+            AppSettings backup = await new FileSystemSettingsStore(path + ".bak").LoadAsync();
+
+            Assert.False(current.ShowCodexUsage);
+            Assert.True(backup.ShowCodexUsage);
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, true);
+        }
+    }
+
+    [Fact]
+    public async Task SaveFailureCleansUpTemporaryFile()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "AiUsageMonitor.Tests", Guid.NewGuid().ToString("N"));
+        string path = Path.Combine(directory, "settings.json");
+        try
+        {
+            Directory.CreateDirectory(path);
+            using var store = new FileSystemSettingsStore(path);
+
+            await Assert.ThrowsAsync<IOException>(() => store.SaveAsync(new AppSettings()));
+
+            Assert.Empty(Directory.EnumerateFiles(directory, "settings.json.*.tmp"));
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, true);
+        }
+    }
+
+    [Fact]
+    public async Task ExistingCorruptArchiveConflictDoesNotPreventDefaultFallback()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "AiUsageMonitor.Tests", Guid.NewGuid().ToString("N"));
+        string path = Path.Combine(directory, "settings.json");
+        try
+        {
+            Directory.CreateDirectory(directory);
+            await File.WriteAllTextAsync(path, "{ broken primary");
+            Directory.CreateDirectory(path + ".corrupt");
+            using var store = new FileSystemSettingsStore(path);
+
+            AppSettings result = await store.LoadAsync();
+
+            Assert.True(result.ShowCodexUsage);
+            Assert.True(Directory.Exists(path + ".corrupt"));
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, true);
+        }
+    }
+
+    [Fact]
     public async Task SettingsRoundTripUsesCultureIndependentJsonNumbers()
     {
         string directory = Path.Combine(Path.GetTempPath(), "AiUsageMonitor.Tests", Guid.NewGuid().ToString("N"));
