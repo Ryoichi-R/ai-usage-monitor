@@ -53,38 +53,68 @@ public partial class App : System.Windows.Application
         }
         _mutex = new Mutex(true, LegacyMutexName, out bool first);
         if (!first) { Shutdown(); return; }
-        string settingsPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            LegacySettingsDirectoryName,
-            "settings.json");
-        bool isFirstRun = !File.Exists(settingsPath);
-        _store = new FileSystemSettingsStore(settingsPath);
-        _settings = await _store.LoadAsync();
-        _viewModel = new UsageViewModel();
-        _viewModel.ShowCodex = CodexFeaturesEnabled();
-        _viewModel.ShowClaude = _settings.ShowClaudeUsage;
-        ConfigureCodexViewModels();
-        _window = new MainWindow { DataContext = _viewModel };
-        _window.ApplySettings(_settings, false);
-        _window.UserPositionChanged += async () => { _settings = _window.CaptureCustomPosition(); await _store.SaveAsync(_settings); };
-        _window.Show();
-        _tray = new TrayController();
-        _tray.ClaudeSetupRequested += ShowClaudeSetup;
-        _tray.SettingsRequested += ShowSettings;
-        _tray.RefreshRequested += () => _ = RefreshAsync(_lifetime.Token, manual: true);
-        _tray.ToggleVisibilityRequested += () => { if (_window.IsVisible) _window.Hide(); else _window.Show(); };
-        _tray.ExitRequested += Shutdown;
-        _codexCoordinator = new(
-            Environment.GetEnvironmentVariable("CODEX_HOME"),
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
-        _codexCoordinator.SnapshotChanged += DispatchCodexSnapshot;
-        await ConfigureCodexAsync();
-        _claudeRuntime.SnapshotChanged += DispatchClaudeSnapshot;
-        ConfigureClaudeListener();
-        await RefreshAsync(_lifetime.Token);
-        _codexPollTask = _codexCoordinator.RunPeriodicPollingAsync(_lifetime.Token);
-        _claudePollTask = PollClaudeAsync(_lifetime.Token);
-        if (isFirstRun) await ShowFirstRunAsync();
+        // 起動処理は多数の外部リソース（設定file、レジストリ、Codex/Claude起動）に触れる。
+        // ここで想定外の例外が漏れるとasync void経由で無表示のままクラッシュするため、
+        // 致命的な失敗だけは理由を提示してから終了する。
+        DispatcherUnhandledException += OnDispatcherUnhandledException;
+        try
+        {
+            string settingsPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                LegacySettingsDirectoryName,
+                "settings.json");
+            bool isFirstRun = !File.Exists(settingsPath);
+            _store = new FileSystemSettingsStore(settingsPath);
+            _settings = await _store.LoadAsync();
+            _viewModel = new UsageViewModel();
+            _viewModel.ShowCodex = CodexFeaturesEnabled();
+            _viewModel.ShowClaude = _settings.ShowClaudeUsage;
+            ConfigureCodexViewModels();
+            _window = new MainWindow { DataContext = _viewModel };
+            _window.ApplySettings(_settings, false);
+            _window.UserPositionChanged += async () => { _settings = _window.CaptureCustomPosition(); await _store.SaveAsync(_settings); };
+            _window.Show();
+            _tray = new TrayController();
+            _tray.ClaudeSetupRequested += ShowClaudeSetup;
+            _tray.SettingsRequested += ShowSettings;
+            _tray.RefreshRequested += () => _ = RefreshAsync(_lifetime.Token, manual: true);
+            _tray.ToggleVisibilityRequested += () => { if (_window.IsVisible) _window.Hide(); else _window.Show(); };
+            _tray.ExitRequested += Shutdown;
+            _codexCoordinator = new(
+                Environment.GetEnvironmentVariable("CODEX_HOME"),
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+            _codexCoordinator.SnapshotChanged += DispatchCodexSnapshot;
+            await ConfigureCodexAsync();
+            _claudeRuntime.SnapshotChanged += DispatchClaudeSnapshot;
+            ConfigureClaudeListener();
+            await RefreshAsync(_lifetime.Token);
+            _codexPollTask = _codexCoordinator.RunPeriodicPollingAsync(_lifetime.Token);
+            _claudePollTask = PollClaudeAsync(_lifetime.Token);
+            if (isFirstRun) await ShowFirstRunAsync();
+        }
+        catch (Exception exception)
+        {
+            System.Windows.MessageBox.Show(
+                $"AI Usage Monitorを起動できませんでした。設定ファイルが壊れているか、必要なリソースにアクセスできない可能性があります。\n\n{exception.GetType().Name}: {exception.Message}",
+                "AI Usage Monitor",
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Error);
+            Shutdown(1);
+        }
+    }
+
+    private void OnDispatcherUnhandledException(
+        object sender,
+        System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
+    {
+        // UI操作由来のasync void経路（設定保存、位置保存など）で想定外の例外が起きても、
+        // 既定動作（無表示のままプロセス終了）にはしない。操作は失敗として扱い続行する。
+        System.Windows.MessageBox.Show(
+            $"操作に失敗しました。直前の変更は保存されていない可能性があります。\n\n{e.Exception.GetType().Name}: {e.Exception.Message}",
+            "AI Usage Monitor",
+            System.Windows.MessageBoxButton.OK,
+            System.Windows.MessageBoxImage.Warning);
+        e.Handled = true;
     }
 
     private async Task PollClaudeAsync(CancellationToken cancellationToken)
@@ -93,7 +123,15 @@ public partial class App : System.Windows.Application
         {
             double jitter = 0.9 + (Random.Shared.NextDouble() * 0.2);
             await Task.Delay(TimeSpan.FromSeconds(_settings.RefreshIntervalSeconds * jitter), cancellationToken);
-            await RefreshAsync(cancellationToken, refreshCodex: false);
+            try
+            {
+                await RefreshAsync(cancellationToken, refreshCodex: false);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // RefreshAsync内部で拾いきれない想定外の失敗でも、このループ自体は継続する。
+                // ここで止まるとClaudeの定期更新が無表示のまま恒久停止してしまう。
+            }
         }
     }
 
@@ -111,7 +149,16 @@ public partial class App : System.Windows.Application
                 ManualRefreshBusyDecision decision =
                     _manualRefreshState.RequestWhileBusy();
                 if (decision.JoinTask is { } current)
-                    await current.WaitAsync(cancellationToken);
+                {
+                    try
+                    {
+                        await current.WaitAsync(cancellationToken);
+                    }
+                    catch (Exception exception) when (exception is not OperationCanceledException)
+                    {
+                        // 合流先のowner呼び出しが既に失敗表示へ反映済みのため、ここでは再送出しない。
+                    }
+                }
             }
             return;
         }
@@ -144,7 +191,18 @@ public partial class App : System.Windows.Application
                     DateTimeOffset.UtcNow,
                     cancellationToken);
                 _manualRefreshState.Enter(RefreshPhase.Claude, claudeRefresh);
-                await claudeRefresh;
+                try
+                {
+                    await claudeRefresh;
+                }
+                catch (Exception exception) when (exception is not OperationCanceledException)
+                {
+                    _viewModel.Apply(UsageSnapshot.Loading(UsageProvider.Claude, DateTimeOffset.UtcNow) with
+                    {
+                        Availability = UsageAvailability.Error,
+                        Reason = "CLAUDE_REFRESH_EXCEPTION",
+                    });
+                }
             }
         }
         finally
@@ -388,11 +446,13 @@ public partial class App : System.Windows.Application
     {
         _lifetime.Cancel();
         _claudeRuntime.Disable();
-        if (_codexPollTask is not null) try { await _codexPollTask; } catch (OperationCanceledException) { }
-        if (_claudePollTask is not null) try { await _claudePollTask; } catch (OperationCanceledException) { }
+        // 通常はOperationCanceledExceptionだけで終わるが、pollループ内で拾いきれない
+        // 想定外の例外が残っていた場合でも、以降の破棄処理とアプリ終了は必ず継続する。
+        if (_codexPollTask is not null) try { await _codexPollTask; } catch (Exception) { }
+        if (_claudePollTask is not null) try { await _claudePollTask; } catch (Exception) { }
         if (_codexCoordinator is not null) await _codexCoordinator.DisposeAsync();
         if (_claudeServer is not null) await _claudeServer.DisposeAsync();
-        _tray?.Dispose(); _mutex?.Dispose(); _refreshGate.Dispose(); _lifetime.Dispose();
+        _tray?.Dispose(); _mutex?.Dispose(); _store?.Dispose(); _refreshGate.Dispose(); _lifetime.Dispose();
         base.OnExit(e);
     }
 }

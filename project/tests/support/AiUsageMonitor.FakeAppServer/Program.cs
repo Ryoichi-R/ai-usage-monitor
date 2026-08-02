@@ -20,6 +20,12 @@ bool signedOut = !signedOutAfterSuccess && codexHome?.Contains(
 bool staleAfterSuccess = codexHome?.Contains(
     "stale-after-success",
     StringComparison.OrdinalIgnoreCase) == true;
+bool periodicRecovery = codexHome?.Contains(
+    "periodic-recovery",
+    StringComparison.OrdinalIgnoreCase) == true;
+bool disposeRace = codexHome?.Contains(
+    "dispose-race",
+    StringComparison.OrdinalIgnoreCase) == true;
 int rateLimitReadCount = 0;
 int accountReadCount = 0;
 double usedPercent = accountB ? 70 : 25;
@@ -45,6 +51,23 @@ while (await Console.In.ReadLineAsync() is { } line)
             staleAfterSuccess &&
             ++rateLimitReadCount > 1)
             return 3;
+        if (method == "account/rateLimits/read" && periodicRecovery)
+        {
+            string failureMarker = Path.Combine(codexHome!, ".periodic-failure-consumed");
+            if (!File.Exists(failureMarker))
+            {
+                await File.WriteAllTextAsync(failureMarker, "failure-consumed");
+                return 3;
+            }
+        }
+        if (method == "account/rateLimits/read" && disposeRace)
+        {
+            string readyMarker = Path.Combine(codexHome!, ".dispose-race-ready");
+            string releaseMarker = Path.Combine(codexHome!, ".dispose-race-release");
+            await File.WriteAllTextAsync(readyMarker, "read-in-flight");
+            while (File.Exists(releaseMarker))
+                await Task.Delay(10);
+        }
         if (method == "account/read" &&
             signedOutAfterSuccess &&
             ++accountReadCount > 2)

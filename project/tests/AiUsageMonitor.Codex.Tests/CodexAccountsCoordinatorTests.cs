@@ -128,6 +128,89 @@ public sealed class CodexAccountsCoordinatorTests
     }
 
     [Fact]
+    public async Task PeriodicPollingSurvivesTransientRpcFailureAndRecovers()
+    {
+        string root = CreateRoot();
+        try
+        {
+            string account = Directory.CreateDirectory(
+                Path.Combine(root, "periodic-recovery")).FullName;
+            var failure = new TaskCompletionSource<CodexAccountSnapshot>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var recovery = new TaskCompletionSource<CodexAccountSnapshot>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            await using var coordinator = new CodexAccountsCoordinator(
+                null,
+                root,
+                pollingJitterFactory: () => 0.5d,
+                notificationCooldown: TimeSpan.FromHours(1));
+            coordinator.SnapshotChanged += snapshot =>
+            {
+                if (snapshot.Snapshot.Reason == "RPC_FAILURE")
+                    failure.TrySetResult(snapshot);
+                if (snapshot.Snapshot.Availability == UsageAvailability.Available)
+                    recovery.TrySetResult(snapshot);
+            };
+            await coordinator.ConfigureAsync(SingleSettings(account), null);
+            using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+            Task polling = coordinator.RunPeriodicPollingAsync(
+                TimeSpan.FromMilliseconds(30),
+                cancellation.Token);
+            await failure.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            CodexAccountSnapshot recovered = await recovery.Task.WaitAsync(
+                TimeSpan.FromSeconds(2));
+
+            Assert.Equal(UsageAvailability.Available, recovered.Snapshot.Availability);
+            cancellation.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => polling);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public async Task ReconfiguringDuringReadWaitsForGateBeforeDisposal()
+    {
+        string root = CreateRoot();
+        try
+        {
+            string account = Directory.CreateDirectory(
+                Path.Combine(root, "dispose-race")).FullName;
+            string releaseMarker = Path.Combine(account, ".dispose-race-release");
+            await File.WriteAllTextAsync(releaseMarker, "hold-read");
+            await using var coordinator = new CodexAccountsCoordinator(null, root);
+            await coordinator.ConfigureAsync(SingleSettings(account), null);
+
+            Task refresh = coordinator.RefreshAsync();
+            string readyMarker = Path.Combine(account, ".dispose-race-ready");
+            for (int attempt = 0; attempt < 200 && !File.Exists(readyMarker); attempt++)
+                await Task.Delay(10);
+            Assert.True(File.Exists(readyMarker), "The fake server did not enter the in-flight read.");
+
+            Task reconfigure = coordinator.ConfigureAsync(new AppSettings
+            {
+                CodexExecutablePath = FindFakeServer(),
+                ShowCodexUsage = false,
+                ShowAdditionalUsage = false,
+                ShowCredits = false,
+                CodexAccounts = [new() { Id = "a", DisplayName = "A", CodexHomePath = account }],
+            }, null);
+            await Task.Delay(30);
+            File.Delete(releaseMarker);
+
+            await refresh.WaitAsync(TimeSpan.FromSeconds(2));
+            await reconfigure.WaitAsync(TimeSpan.FromSeconds(2));
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
     public async Task PeriodicSchedulerRefreshesUntilCancellation()
     {
         string root = CreateRoot();
