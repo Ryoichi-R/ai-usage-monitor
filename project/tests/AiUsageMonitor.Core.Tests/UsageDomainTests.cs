@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using AiUsageMonitor.Core.Presentation;
 using AiUsageMonitor.Core.Settings;
 using AiUsageMonitor.Core.Usage;
@@ -7,6 +9,71 @@ namespace AiUsageMonitor.Core.Tests;
 
 public sealed class UsageDomainTests
 {
+    [Fact]
+    public void DisplayModeDefaultsToStandardAndUnknownValuesNormalizeToStandard()
+    {
+        Assert.Equal(WidgetDisplayMode.Standard, new AppSettings().DisplayMode);
+        Assert.Equal(
+            WidgetDisplayMode.Standard,
+            new AppSettings { DisplayMode = (WidgetDisplayMode)999 }.Normalized().DisplayMode);
+    }
+
+    [Fact]
+    public async Task DisplayModeCompactRoundTripsWithoutChangingSchemaOrPlacement()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "AiUsageMonitor.Tests", Guid.NewGuid().ToString("N"));
+        string path = Path.Combine(directory, "settings.json");
+        try
+        {
+            AppSettings settings = new()
+            {
+                DisplayMode = WidgetDisplayMode.Compact,
+                UiScalePercent = 125.5,
+                PlacementMode = PlacementMode.Custom,
+                CustomLeftFraction = .25,
+                CustomTopFraction = .75,
+                ExtensionData = new() { ["FutureKey"] = JsonDocument.Parse("true").RootElement },
+            };
+            await new FileSystemSettingsStore(path).SaveAsync(settings);
+
+            AppSettings result = await new FileSystemSettingsStore(path).LoadAsync();
+
+            Assert.Equal(2, result.SchemaVersion);
+            Assert.Equal(WidgetDisplayMode.Compact, result.DisplayMode);
+            Assert.Equal(settings.UiScalePercent, result.UiScalePercent);
+            Assert.Equal(settings.CustomLeftFraction, result.CustomLeftFraction);
+            Assert.Equal(settings.CustomTopFraction, result.CustomTopFraction);
+            Assert.Contains("FutureKey", result.ExtensionData!.Keys);
+        }
+        finally
+        {
+            if (Directory.Exists(directory)) Directory.Delete(directory, true);
+        }
+    }
+
+    [Fact]
+    public void LegacyReaderExtensionDataPromotesDisplayModeToTheRealProperty()
+    {
+        string json = JsonSerializer.Serialize(new AppSettings
+        {
+            DisplayMode = WidgetDisplayMode.Compact,
+            ExtensionData = new() { ["FutureKey"] = JsonDocument.Parse("42").RootElement },
+        });
+        LegacySettings legacy = JsonSerializer.Deserialize<LegacySettings>(json)!;
+        string legacyRoundTrip = JsonSerializer.Serialize(legacy);
+
+        AppSettings result = JsonSerializer.Deserialize<AppSettings>(legacyRoundTrip)!.Normalized();
+        Assert.Equal(WidgetDisplayMode.Compact, result.DisplayMode);
+        Assert.False(result.ExtensionData?.ContainsKey("DisplayMode") == true);
+        Assert.True(result.ExtensionData?.ContainsKey("FutureKey") == true);
+
+        using JsonDocument saved = JsonDocument.Parse(JsonSerializer.Serialize(result));
+        Assert.Equal(
+            1,
+            saved.RootElement.EnumerateObject().Count(property =>
+                string.Equals(property.Name, "DisplayMode", StringComparison.Ordinal)));
+    }
+
     [Theory]
     [InlineData(-10, 100)]
     [InlineData(0, 100)]
@@ -396,5 +463,13 @@ public sealed class UsageDomainTests
         Assert.Equal(.25, result.CustomLeftFraction);
         Assert.Equal(.75, result.CustomTopFraction);
         Assert.Equal(PlacementAnchor.BottomRight, result.Anchor);
+    }
+
+    private sealed record LegacySettings
+    {
+        public int SchemaVersion { get; init; }
+
+        [JsonExtensionData]
+        public Dictionary<string, JsonElement>? ExtensionData { get; init; }
     }
 }

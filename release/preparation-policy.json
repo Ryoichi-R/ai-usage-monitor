@@ -1,7 +1,26 @@
 {
   "schema_version": "1.0",
   "public_root": ".",
-  "profiles": ["source-repository"],
+  "profiles": ["source-repository", "binary-local-only", "binary-release"],
+  "profile_contract": {
+    "source-repository": {
+      "description": "Source and documentation only. Generated binaries and local payloads are excluded.",
+      "publish_binary": false,
+      "manual_acceptance_scope": "source-validation"
+    },
+    "binary-local-only": {
+      "description": "Internal QA package only. It must not be uploaded or described as release-ready.",
+      "publish_binary": false,
+      "manual_acceptance_scope": "candidate-validation",
+      "required_labels": ["internal-test", "readiness-blocked"]
+    },
+    "binary-release": {
+      "description": "Public binary release asset bound to the exact candidate hash.",
+      "publish_binary": true,
+      "manual_acceptance_scope": "release-validation",
+      "required_labels": ["release-ready"]
+    }
+  },
   "documents": [
     {
       "path": "README.md",
@@ -82,6 +101,21 @@
       "reason": "ARM64実機検証は本安定化プランの対象外。ARM64 candidateを公開する場合だけ実機確認を追加する。"
     }
   ],
+  "payload_policy": {
+    "raw_usage_payload": {
+      "storage": "process-memory-only",
+      "source_control": "forbidden",
+      "release_asset": false
+    },
+    "binary_payload": {
+      "local_path": "project/artifacts/**",
+      "source_control": "ignored",
+      "release_asset": "external-release-asset",
+      "manifest_required": true,
+      "release_profile": "binary-release",
+      "readiness_blocked_allowed_only_in": "binary-local-only"
+    }
+  },
   "artifacts": [],
   "integrity": {
     "require_hashes": true,

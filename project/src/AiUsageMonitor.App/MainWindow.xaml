@@ -20,7 +20,7 @@
                    FontSize="11"
                    HorizontalAlignment="Left"
                    VerticalAlignment="Center"
-                   Foreground="{StaticResource MutedBrush}"/>
+                   Foreground="{DynamicResource MutedBrush}"/>
         <StackPanel x:Name="UsageValuePanel"
                     Grid.Column="1"
                     Orientation="Horizontal"
@@ -31,19 +31,19 @@
                      Margin="0,5,3,0"
                      FontSize="10"
                      VerticalAlignment="Center"
-                     Foreground="{StaticResource MutedBrush}"/>
+                     Foreground="{DynamicResource MutedBrush}"/>
           <TextBlock Text="{Binding Value}" FontSize="24" FontWeight="SemiBold">
             <TextBlock.Style>
               <Style TargetType="TextBlock">
-                <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+                <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
                 <Style.Triggers>
-                  <DataTrigger Binding="{Binding Severity}" Value="Warning"><Setter Property="Foreground" Value="{StaticResource WarnBrush}"/></DataTrigger>
-                  <DataTrigger Binding="{Binding Severity}" Value="Danger"><Setter Property="Foreground" Value="{StaticResource DangerBrush}"/></DataTrigger>
+                  <DataTrigger Binding="{Binding Severity}" Value="Warning"><Setter Property="Foreground" Value="{DynamicResource WarnBrush}"/></DataTrigger>
+                  <DataTrigger Binding="{Binding Severity}" Value="Danger"><Setter Property="Foreground" Value="{DynamicResource DangerBrush}"/></DataTrigger>
                 </Style.Triggers>
               </Style>
             </TextBlock.Style>
           </TextBlock>
-          <TextBlock Text="%" FontSize="13" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}"/>
+          <TextBlock Text="%" FontSize="13" VerticalAlignment="Center" Foreground="{DynamicResource MutedBrush}"/>
         </StackPanel>
         <TextBlock x:Name="ResetText"
                    Grid.Row="1"
@@ -51,7 +51,7 @@
                    Text="{Binding Secondary}"
                    FontSize="12"
                    TextAlignment="Right"
-                   Foreground="{StaticResource AccentBrush}"/>
+                   Foreground="{DynamicResource AccentBrush}"/>
         <Grid x:Name="UsageProgressTrack"
               Grid.Row="2"
               Grid.Column="1"
@@ -60,10 +60,71 @@
           <Rectangle RenderTransformOrigin="0,0.5">
             <Rectangle.Style>
               <Style TargetType="Rectangle">
-                <Setter Property="Fill" Value="{StaticResource AccentBrush}"/>
+                <Setter Property="Fill" Value="{DynamicResource AccentBrush}"/>
                 <Style.Triggers>
-                  <DataTrigger Binding="{Binding Severity}" Value="Warning"><Setter Property="Fill" Value="{StaticResource WarnBrush}"/></DataTrigger>
-                  <DataTrigger Binding="{Binding Severity}" Value="Danger"><Setter Property="Fill" Value="{StaticResource DangerBrush}"/></DataTrigger>
+                  <DataTrigger Binding="{Binding Severity}" Value="Warning"><Setter Property="Fill" Value="{DynamicResource WarnBrush}"/></DataTrigger>
+                  <DataTrigger Binding="{Binding Severity}" Value="Danger"><Setter Property="Fill" Value="{DynamicResource DangerBrush}"/></DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </Rectangle.Style>
+            <Rectangle.RenderTransform><ScaleTransform ScaleX="{Binding Fraction}"/></Rectangle.RenderTransform>
+          </Rectangle>
+        </Grid>
+      </Grid>
+    </DataTemplate>
+    <DataTemplate x:Key="CompactUsageRowTemplate">
+      <Grid Height="52" Margin="0,0,0,4" Width="134">
+        <Grid.RowDefinitions><RowDefinition Height="30"/><RowDefinition Height="17"/><RowDefinition Height="5"/></Grid.RowDefinitions>
+        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+        <TextBlock x:Name="CompactWindowLabel"
+                   Grid.Column="0"
+                   Text="{Binding Label}"
+                   FontSize="10"
+                   HorizontalAlignment="Left"
+                   VerticalAlignment="Center"
+                   Foreground="{DynamicResource MutedBrush}"/>
+        <StackPanel x:Name="CompactUsageValuePanel"
+                    Grid.Column="1"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Center">
+          <TextBlock Text="残り" Margin="0,3,2,0" FontSize="9"
+                     VerticalAlignment="Center" Foreground="{DynamicResource MutedBrush}"/>
+          <TextBlock Text="{Binding Value}" FontSize="22" FontWeight="SemiBold">
+            <TextBlock.Style>
+              <Style TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding Severity}" Value="Warning"><Setter Property="Foreground" Value="{DynamicResource WarnBrush}"/></DataTrigger>
+                  <DataTrigger Binding="{Binding Severity}" Value="Danger"><Setter Property="Foreground" Value="{DynamicResource DangerBrush}"/></DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </TextBlock.Style>
+          </TextBlock>
+          <TextBlock Text="%" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource MutedBrush}"/>
+        </StackPanel>
+        <TextBlock x:Name="CompactResetText"
+                   Grid.Row="1"
+                   Grid.Column="0"
+                   Grid.ColumnSpan="2"
+                   Text="{Binding Secondary}"
+                   ToolTip="{Binding Secondary}"
+                   FontSize="10.5"
+                   TextAlignment="Right"
+                   TextTrimming="CharacterEllipsis"
+                   Foreground="{DynamicResource AccentBrush}"/>
+        <Grid x:Name="CompactUsageProgressTrack"
+              Grid.Row="2"
+              Grid.Column="0"
+              Grid.ColumnSpan="2"
+              Background="#22000000">
+          <Rectangle RenderTransformOrigin="0,0.5">
+            <Rectangle.Style>
+              <Style TargetType="Rectangle">
+                <Setter Property="Fill" Value="{DynamicResource AccentBrush}"/>
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding Severity}" Value="Warning"><Setter Property="Fill" Value="{DynamicResource WarnBrush}"/></DataTrigger>
+                  <DataTrigger Binding="{Binding Severity}" Value="Danger"><Setter Property="Fill" Value="{DynamicResource DangerBrush}"/></DataTrigger>
                 </Style.Triggers>
               </Style>
             </Rectangle.Style>
@@ -89,7 +150,7 @@
             <TextBlock x:Name="MonetaryTitle"
                        Text="{Binding Title}"
                        FontSize="11"
-                       Foreground="{StaticResource MutedBrush}"/>
+                       Foreground="{DynamicResource MutedBrush}"/>
             <TextBlock x:Name="MonetaryValue"
                        Grid.Row="1"
                        Text="{Binding Value}"
@@ -97,25 +158,48 @@
                        FontWeight="SemiBold"
                        TextAlignment="Right"
                        TextTrimming="CharacterEllipsis"
-                       Foreground="{StaticResource AccentBrush}"/>
+                       Foreground="{DynamicResource AccentBrush}"/>
             <TextBlock x:Name="MonetarySecondary"
                        Grid.Row="2"
                        Text="{Binding Secondary}"
                        FontSize="11"
                        TextAlignment="Right"
                        TextWrapping="Wrap"
-                       Foreground="{StaticResource MutedBrush}"/>
+                       Foreground="{DynamicResource MutedBrush}"/>
           </Grid>
         </Border>
       </Grid>
     </DataTemplate>
   </Window.Resources>
-  <Border x:Name="Root" Width="280" MaxHeight="700" Padding="10" Background="Transparent">
-    <ScrollViewer x:Name="ContentScrollViewer"
-                  VerticalScrollBarVisibility="Auto"
-                  HorizontalScrollBarVisibility="Disabled"
-                  ScrollChanged="OnContentScrollChanged">
-      <StackPanel>
+  <Grid x:Name="AppearanceHost" Background="Transparent">
+    <Border x:Name="BackgroundFadeHost"
+            Background="Transparent"
+            IsHitTestVisible="False"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch">
+      <Border x:Name="BackgroundSurface"
+              Background="Transparent"
+              IsHitTestVisible="False" />
+    </Border>
+    <Border x:Name="Root"
+            Width="280"
+            MaxHeight="700"
+            Padding="10"
+            Background="Transparent"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center">
+    <Grid x:Name="RootContentGrid">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="*"/>
+        <RowDefinition Height="Auto"/>
+      </Grid.RowDefinitions>
+      <ScrollViewer x:Name="ContentScrollViewer"
+                    Grid.Row="0"
+                    VerticalScrollBarVisibility="Auto"
+                    HorizontalScrollBarVisibility="Disabled"
+                    ScrollChanged="OnContentScrollChanged">
+        <StackPanel>
+      <StackPanel x:Name="StandardContentPanel">
       <TextBlock x:Name="CodexHeader" Text="CODEX" Height="0" Opacity="0"/>
       <ItemsControl x:Name="CodexAccountsControl" ItemsSource="{Binding CodexAccounts}" Visibility="{Binding CodexVisibility}">
         <ItemsControl.ItemTemplate>
@@ -124,17 +208,17 @@
               <Grid Width="260" HorizontalAlignment="Left" ClipToBounds="True">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="122"/><ColumnDefinition Width="138"/></Grid.ColumnDefinitions>
                 <TextBlock Text="{Binding DisplayName}" ToolTip="{Binding DisplayName}" TextTrimming="CharacterEllipsis"
-                           FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource MutedBrush}"/>
+                           FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource MutedBrush}"/>
                 <TextBlock Grid.Column="1" Text="{Binding Usage.FreshnessText}" Visibility="{Binding Usage.FreshnessVisibility}"
                            ToolTip="{Binding Usage.FreshnessToolTip}"
                            MaxWidth="138" TextAlignment="Right" TextTrimming="CharacterEllipsis"
                            Typography.NumeralAlignment="Tabular" FontSize="11">
                   <TextBlock.Style>
                     <Style TargetType="TextBlock">
-                      <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+                      <Setter Property="Foreground" Value="{DynamicResource MutedBrush}"/>
                       <Style.Triggers>
-                        <DataTrigger Binding="{Binding Usage.FreshnessSeverity}" Value="Warning"><Setter Property="Foreground" Value="{StaticResource WarnBrush}"/></DataTrigger>
-                        <DataTrigger Binding="{Binding Usage.FreshnessSeverity}" Value="Danger"><Setter Property="Foreground" Value="{StaticResource DangerBrush}"/></DataTrigger>
+                        <DataTrigger Binding="{Binding Usage.FreshnessSeverity}" Value="Warning"><Setter Property="Foreground" Value="{DynamicResource WarnBrush}"/></DataTrigger>
+                        <DataTrigger Binding="{Binding Usage.FreshnessSeverity}" Value="Danger"><Setter Property="Foreground" Value="{DynamicResource DangerBrush}"/></DataTrigger>
                       </Style.Triggers>
                     </Style>
                   </TextBlock.Style>
@@ -148,7 +232,7 @@
                               ContentTemplate="{StaticResource MonetaryCardTemplate}"
                               Visibility="{Binding Usage.CreditBalance.Visibility}"/>
               <TextBlock Text="{Binding Usage.StatusText}" Visibility="{Binding Usage.StatusVisibility}"
-                         FontSize="12" TextAlignment="Right" Foreground="{StaticResource MutedBrush}"/>
+                         FontSize="12" TextAlignment="Right" Foreground="{DynamicResource MutedBrush}"/>
             </StackPanel>
           </DataTemplate>
         </ItemsControl.ItemTemplate>
@@ -156,34 +240,107 @@
       <StackPanel Visibility="{Binding ClaudeVisibility}" Margin="0,8,0,0">
         <Grid Width="260" HorizontalAlignment="Left" ClipToBounds="True">
           <Grid.ColumnDefinitions><ColumnDefinition Width="122"/><ColumnDefinition Width="138"/></Grid.ColumnDefinitions>
-          <TextBlock Text="CLAUDE" FontSize="11" FontWeight="SemiBold" Foreground="{StaticResource MutedBrush}"/>
+          <TextBlock Text="CLAUDE" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource MutedBrush}"/>
           <TextBlock Grid.Column="1" Text="{Binding Claude.FreshnessText}" Visibility="{Binding Claude.FreshnessVisibility}"
                      ToolTip="{Binding Claude.FreshnessToolTip}"
                      MaxWidth="138" TextAlignment="Right" TextTrimming="CharacterEllipsis"
                      Typography.NumeralAlignment="Tabular" FontSize="11">
             <TextBlock.Style>
               <Style TargetType="TextBlock">
-                <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+                <Setter Property="Foreground" Value="{DynamicResource MutedBrush}"/>
                 <Style.Triggers>
-                  <DataTrigger Binding="{Binding Claude.FreshnessSeverity}" Value="Warning"><Setter Property="Foreground" Value="{StaticResource WarnBrush}"/></DataTrigger>
-                  <DataTrigger Binding="{Binding Claude.FreshnessSeverity}" Value="Danger"><Setter Property="Foreground" Value="{StaticResource DangerBrush}"/></DataTrigger>
+                  <DataTrigger Binding="{Binding Claude.FreshnessSeverity}" Value="Warning"><Setter Property="Foreground" Value="{DynamicResource WarnBrush}"/></DataTrigger>
+                  <DataTrigger Binding="{Binding Claude.FreshnessSeverity}" Value="Danger"><Setter Property="Foreground" Value="{DynamicResource DangerBrush}"/></DataTrigger>
                 </Style.Triggers>
               </Style>
             </TextBlock.Style>
           </TextBlock>
         </Grid>
         <ItemsControl ItemsSource="{Binding Claude.Rows}" ItemTemplate="{StaticResource UsageRowTemplate}"/>
-        <TextBlock Text="{Binding Claude.StatusText}" Visibility="{Binding Claude.StatusVisibility}" FontSize="12" TextAlignment="Right" Foreground="{StaticResource MutedBrush}"/>
+        <TextBlock Text="{Binding Claude.StatusText}" Visibility="{Binding Claude.StatusVisibility}" FontSize="12" TextAlignment="Right" Foreground="{DynamicResource MutedBrush}"/>
       </StackPanel>
+      </StackPanel>
+      <StackPanel x:Name="CompactContentPanel" Visibility="Collapsed">
+        <ItemsControl ItemsSource="{Binding CodexAccounts}" Visibility="{Binding CodexVisibility}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <StackPanel Visibility="{Binding Visibility}" Margin="0,0,0,8">
+                <Grid Width="134" HorizontalAlignment="Left" ClipToBounds="True">
+                  <Grid.ColumnDefinitions><ColumnDefinition Width="58"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                  <TextBlock Text="{Binding DisplayName}"
+                             ToolTip="{Binding DisplayName}"
+                             AutomationProperties.Name="{Binding DisplayName}"
+                             TextTrimming="CharacterEllipsis"
+                             FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource MutedBrush}"/>
+                  <TextBlock Grid.Column="1" Text="{Binding Usage.FreshnessText}" Visibility="{Binding Usage.FreshnessVisibility}"
+                             ToolTip="{Binding Usage.FreshnessCompactToolTip}"
+                             AutomationProperties.Name="{Binding Usage.FreshnessText}" MaxWidth="76"
+                             TextAlignment="Right" TextTrimming="CharacterEllipsis"
+                             Typography.NumeralAlignment="Tabular" FontSize="10.5">
+                    <TextBlock.Style>
+                      <Style TargetType="TextBlock">
+                        <Setter Property="Foreground" Value="{DynamicResource MutedBrush}"/>
+                        <Style.Triggers>
+                          <DataTrigger Binding="{Binding Usage.FreshnessSeverity}" Value="Warning"><Setter Property="Foreground" Value="{DynamicResource WarnBrush}"/></DataTrigger>
+                          <DataTrigger Binding="{Binding Usage.FreshnessSeverity}" Value="Danger"><Setter Property="Foreground" Value="{DynamicResource DangerBrush}"/></DataTrigger>
+                        </Style.Triggers>
+                      </Style>
+                    </TextBlock.Style>
+                  </TextBlock>
+                </Grid>
+                <ItemsControl ItemsSource="{Binding Usage.Rows}" ItemTemplate="{StaticResource CompactUsageRowTemplate}"/>
+                <TextBlock Text="{Binding Usage.StatusText}"
+                           Visibility="{Binding Usage.CompactStatusVisibility}"
+                           Width="134"
+                           FontSize="10.5"
+                           TextAlignment="Right"
+                           TextWrapping="Wrap"
+                           Foreground="{DynamicResource MutedBrush}"/>
+              </StackPanel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <StackPanel Visibility="{Binding ClaudeVisibility}" Margin="0,8,0,0">
+          <Grid Width="134" HorizontalAlignment="Left" ClipToBounds="True">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="58"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+            <TextBlock Text="CLAUDE" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource MutedBrush}"/>
+            <TextBlock Grid.Column="1" Text="{Binding Claude.FreshnessText}" Visibility="{Binding Claude.FreshnessVisibility}"
+                       ToolTip="{Binding Claude.FreshnessCompactToolTip}"
+                       AutomationProperties.Name="{Binding Claude.FreshnessText}" MaxWidth="76" TextAlignment="Right"
+                       TextTrimming="CharacterEllipsis" Typography.NumeralAlignment="Tabular" FontSize="10.5">
+              <TextBlock.Style>
+                <Style TargetType="TextBlock">
+                  <Setter Property="Foreground" Value="{DynamicResource MutedBrush}"/>
+                  <Style.Triggers>
+                    <DataTrigger Binding="{Binding Claude.FreshnessSeverity}" Value="Warning"><Setter Property="Foreground" Value="{DynamicResource WarnBrush}"/></DataTrigger>
+                    <DataTrigger Binding="{Binding Claude.FreshnessSeverity}" Value="Danger"><Setter Property="Foreground" Value="{DynamicResource DangerBrush}"/></DataTrigger>
+                  </Style.Triggers>
+                </Style>
+              </TextBlock.Style>
+            </TextBlock>
+          </Grid>
+          <ItemsControl ItemsSource="{Binding Claude.Rows}" ItemTemplate="{StaticResource CompactUsageRowTemplate}"/>
+          <TextBlock Text="{Binding Claude.StatusText}"
+                     Visibility="{Binding Claude.CompactStatusVisibility}"
+                     Width="134"
+                     FontSize="10.5"
+                     TextAlignment="Right"
+                     TextWrapping="Wrap"
+                     Foreground="{DynamicResource MutedBrush}"/>
+        </StackPanel>
+      </StackPanel>
+        </StackPanel>
+      </ScrollViewer>
       <TextBlock x:Name="ScrollGuidanceText"
+                 Grid.Row="1"
                  Text="スクロールするにはクリック透過を解除してください"
                  Visibility="Collapsed"
                  Margin="0,6,0,0"
                  FontSize="11"
                  TextAlignment="Right"
                  TextWrapping="Wrap"
-                 Foreground="{StaticResource MutedBrush}"/>
-      </StackPanel>
-    </ScrollViewer>
-  </Border>
+                 Foreground="{DynamicResource MutedBrush}"/>
+    </Grid>
+    </Border>
+  </Grid>
 </Window>

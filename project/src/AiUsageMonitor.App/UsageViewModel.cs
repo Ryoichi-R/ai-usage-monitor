@@ -19,6 +19,13 @@ public sealed class UsageRowViewModel
     public required UsageSeverity Severity { get; init; }
 }
 
+public enum ProviderStatusKind
+{
+    None,
+    Actionable,
+    OptionalDataUnavailable,
+}
+
 public sealed class MonetaryCardViewModel : INotifyPropertyChanged
 {
     private string _title = string.Empty;
@@ -233,13 +240,46 @@ public sealed class ProviderUsageViewModel : INotifyPropertyChanged
     public bool ShowAdditionalUsage { get; set; }
     public bool ShowCredits { get; set; }
     private string _statusText = "LOADING…";
+    private ProviderStatusKind _statusKind;
     private string _freshnessText = string.Empty;
     private string _freshnessToolTip = string.Empty;
     private UsageSeverity _freshnessSeverity = UsageSeverity.Normal;
-    public string StatusText { get => _statusText; private set { _statusText = value; OnPropertyChanged(); OnPropertyChanged(nameof(StatusVisibility)); } }
+    public string StatusText => _statusText;
+    public ProviderStatusKind StatusKind => _statusKind;
     public Visibility StatusVisibility => string.IsNullOrEmpty(StatusText) ? Visibility.Collapsed : Visibility.Visible;
-    public string FreshnessText { get => _freshnessText; private set { _freshnessText = value; OnPropertyChanged(); OnPropertyChanged(nameof(FreshnessVisibility)); } }
-    public string FreshnessToolTip { get => _freshnessToolTip; private set { _freshnessToolTip = value; OnPropertyChanged(); } }
+    public Visibility CompactStatusVisibility =>
+        StatusVisibility == Visibility.Visible && StatusKind != ProviderStatusKind.OptionalDataUnavailable
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    public string FreshnessText
+    {
+        get => _freshnessText;
+        private set
+        {
+            _freshnessText = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(FreshnessVisibility));
+            OnPropertyChanged(nameof(FreshnessCompactToolTip));
+        }
+    }
+
+    public string FreshnessToolTip
+    {
+        get => _freshnessToolTip;
+        private set
+        {
+            _freshnessToolTip = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(FreshnessCompactToolTip));
+        }
+    }
+
+    /// <summary>Compact 表示で省略された freshness を復元できる全文ツールチップ。</summary>
+    public string FreshnessCompactToolTip => string.IsNullOrWhiteSpace(FreshnessToolTip)
+        ? FreshnessText
+        : string.IsNullOrWhiteSpace(FreshnessText)
+            ? FreshnessToolTip
+            : $"{FreshnessText}\n{FreshnessToolTip}";
     public Visibility FreshnessVisibility =>
         string.IsNullOrEmpty(FreshnessText)
             ? Visibility.Collapsed
@@ -287,11 +327,12 @@ public sealed class ProviderUsageViewModel : INotifyPropertyChanged
             CreditBalance.Value = CodexMonetaryFormatter.FormatCreditValue(credit);
             CreditBalance.Secondary = credit.IsUnlimited ? string.Empty : "現在の残高";
         }
-        StatusText = isReference
+        (string statusText, ProviderStatusKind statusKind) = isReference
             ? activeFailureReason is null
-                ? "statusLine参考値 — 最新性未保証"
-                : $"statusLine参考値 — 最新性未保証 / 公式CLI更新失敗: {activeFailureReason}"
+                ? ("statusLine参考値 — 最新性未保証", ProviderStatusKind.Actionable)
+                : ($"statusLine参考値 — 最新性未保証 / 公式CLI更新失敗: {activeFailureReason}", ProviderStatusKind.Actionable)
             : StatusFor(snapshot);
+        SetStatus(statusText, statusKind);
         string? freshPrefix = freshnessKind switch
         {
             ClaudeUsageFreshnessKind.Cli => "CLI",
@@ -338,32 +379,43 @@ public sealed class ProviderUsageViewModel : INotifyPropertyChanged
         }
     }
 
-    private string StatusFor(UsageSnapshot snapshot)
+    private (string Text, ProviderStatusKind Kind) StatusFor(UsageSnapshot snapshot)
     {
         if (string.Equals(snapshot.Reason, "STATUSLINE_WAITING", StringComparison.Ordinal))
-            return "statusLine待機中";
+            return ("statusLine待機中", ProviderStatusKind.Actionable);
         if (snapshot.Reason?.StartsWith("STATUSLINE_NOT_RECEIVED:", StringComparison.Ordinal) == true)
         {
             string minutes = snapshot.Reason["STATUSLINE_NOT_RECEIVED:".Length..];
-            return $"statusLine未受信 {minutes}分 — Claude Code sessionとstatusLine設定を確認";
+            return ($"statusLine未受信 {minutes}分 — Claude Code sessionとstatusLine設定を確認", ProviderStatusKind.Actionable);
         }
         if (snapshot.Availability != UsageAvailability.Available)
-            return UsageStatusFormatter.Format(Name, snapshot);
+            return (UsageStatusFormatter.Format(Name, snapshot), ProviderStatusKind.Actionable);
         if (snapshot.Provider == UsageProvider.Claude &&
             !string.IsNullOrWhiteSpace(snapshot.Reason))
-            return "前回値を表示中 — 更新に失敗しました";
+            return ("前回値を表示中 — 更新に失敗しました", ProviderStatusKind.Actionable);
         if (ShowRateLimits &&
             snapshot.RateLimitAvailability == UsageAvailability.Unsupported)
-            return UsageStatusFormatter.Format(
+            return (UsageStatusFormatter.Format(
                 Name,
-                snapshot with { Reason = snapshot.RateLimitReason ?? "SCHEMA_UNSUPPORTED" });
+                snapshot with { Reason = snapshot.RateLimitReason ?? "SCHEMA_UNSUPPORTED" }),
+                ProviderStatusKind.Actionable);
 
         bool optionalSelected = ShowAdditionalUsage || ShowCredits;
         bool optionalVisible = AdditionalUsage.Visibility == Visibility.Visible ||
             CreditBalance.Visibility == Visibility.Visible;
         return optionalSelected && !optionalVisible
-            ? "利用可能な追加情報はありません"
-            : string.Empty;
+            ? ("利用可能な追加情報はありません", ProviderStatusKind.OptionalDataUnavailable)
+            : (string.Empty, ProviderStatusKind.None);
+    }
+
+    private void SetStatus(string text, ProviderStatusKind kind)
+    {
+        _statusText = text;
+        _statusKind = kind;
+        OnPropertyChanged(nameof(StatusText));
+        OnPropertyChanged(nameof(StatusKind));
+        OnPropertyChanged(nameof(StatusVisibility));
+        OnPropertyChanged(nameof(CompactStatusVisibility));
     }
 
     private void OnPropertyChanged([CallerMemberName] string? name = null) => PropertyChanged?.Invoke(this, new(name));

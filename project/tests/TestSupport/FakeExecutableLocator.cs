@@ -1,3 +1,5 @@
+using System.IO;
+
 namespace AiUsageMonitor.TestSupport;
 
 public static class FakeExecutableLocator
@@ -10,7 +12,18 @@ public static class FakeExecutableLocator
     public static string FindClaudeFakeCli() =>
         Find(projectName: "AiUsageMonitor.FakeClaudeCli", tfmSegment: "net10.0-windows10.0.19041.0", displayName: "Fake Claude CLI");
 
-    private static string Find(string projectName, string tfmSegment, string displayName)
+    public static string FindTopmostTestHost() =>
+        Find(
+            projectName: "AiUsageMonitor.TopmostTestHost",
+            tfmSegment: "net10.0-windows10.0.19041.0",
+            displayName: "TopMost test host",
+            configuration: CurrentTestConfiguration);
+
+    private static string Find(
+        string projectName,
+        string tfmSegment,
+        string displayName,
+        string configuration = "Release")
     {
         string extension = OperatingSystem.IsWindows() ? ".exe" : string.Empty;
         string executableName = projectName + extension;
@@ -25,7 +38,7 @@ public static class FakeExecutableLocator
                 AppContext.BaseDirectory,
                 "..", "..", "..", "..",
                 "support", projectName,
-                "bin", "Release", tfmSegment,
+                "bin", configuration, tfmSegment,
                 executableName));
         if (!File.Exists(sourceRelativePath))
         {
@@ -33,6 +46,12 @@ public static class FakeExecutableLocator
         }
         return sourceRelativePath;
     }
+
+#if DEBUG
+    private const string CurrentTestConfiguration = "Debug";
+#else
+    private const string CurrentTestConfiguration = "Release";
+#endif
 
     private static string FindUnderIsolatedArtifactsRoot(
         string artifactsRoot,

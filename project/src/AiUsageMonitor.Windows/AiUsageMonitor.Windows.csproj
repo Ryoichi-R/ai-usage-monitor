@@ -10,4 +10,10 @@
   <ItemGroup>
     <ProjectReference Include="..\AiUsageMonitor.Core\AiUsageMonitor.Core.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="AiUsageMonitor.App" />
+    <InternalsVisibleTo Include="AiUsageMonitor.Windows.Tests" />
+    <InternalsVisibleTo Include="AiUsageMonitor.App.Tests" />
+  </ItemGroup>
 </Project>

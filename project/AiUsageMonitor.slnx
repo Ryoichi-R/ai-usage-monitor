@@ -18,5 +18,6 @@
   <Folder Name="/tests/support/">
     <Project Path="tests/support/AiUsageMonitor.FakeAppServer/AiUsageMonitor.FakeAppServer.csproj" />
     <Project Path="tests/support/AiUsageMonitor.FakeClaudeCli/AiUsageMonitor.FakeClaudeCli.csproj" />
+    <Project Path="tests/support/AiUsageMonitor.TopmostTestHost/AiUsageMonitor.TopmostTestHost.csproj" />
   </Folder>
 </Solution>

@@ -53,11 +53,28 @@ public sealed class SettingsWindowTests
                 .Select(item => Assert.IsType<string>(item.Header))
                 .ToArray();
 
-            Assert.Equal(["全体設定", "表示位置", "CODEX", "CLAUDE CODE"], headers);
+            Assert.Equal(["全体設定", "表示位置", "外観", "CODEX", "CLAUDE CODE"], headers);
             Assert.Equal(ResizeMode.CanResize, window.ResizeMode);
             Assert.False(window.ShowInTaskbar);
             Assert.True(window.SaveButton.IsDefault);
             Assert.NotNull(window.ValidationMessage);
+            Assert.Equal(2, window.DisplayModeBox.Items.Count);
+            Assert.Equal(0, window.DisplayModeBox.SelectedIndex);
+        });
+    }
+
+    [Fact]
+    public void SettingsWindow_PreservesCompactDisplayModeThroughSave()
+    {
+        RunInSta(() =>
+        {
+            var window = CreateWindow(new AppSettings { DisplayMode = WidgetDisplayMode.Compact });
+            Assert.Equal(1, window.DisplayModeBox.SelectedIndex);
+            window.DisplayModeBox.SelectedIndex = 1;
+            window.Loaded += (_, _) => window.SaveButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+            Assert.True(window.ShowDialog());
+            Assert.Equal(WidgetDisplayMode.Compact, window.Result.DisplayMode);
         });
     }
 
@@ -73,6 +90,7 @@ public sealed class SettingsWindowTests
             [
                 ["ScaleBox"],
                 ["HorizontalMarginBox", "VerticalMarginBox"],
+                ["FontFamilyBox", "ForegroundColorBox", "MutedColorBox", "AccentColorBox", "WarningColorBox", "DangerColorBox", "BackgroundColorBox", "BackgroundOpacityBox", "BackgroundFadeBox"],
                 ["ExecutableBox", "RefreshBox", "StartupTimeoutBox"],
                 ["ClaudeExecutableBox"],
             ];
@@ -183,7 +201,7 @@ public sealed class SettingsWindowTests
             window.Loaded += (_, _) =>
             {
                 window.SaveButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                Assert.Equal(2, window.CategoryTabs.SelectedIndex);
+                Assert.Equal(3, window.CategoryTabs.SelectedIndex);
                 Assert.Equal(1, window.CodexAccountsGrid.SelectedIndex);
                 Assert.Same(
                     window.CodexAccountsGrid.Columns[1],
@@ -273,8 +291,8 @@ public sealed class SettingsWindowTests
     [InlineData("ScaleBox", "201", 0, "表示倍率")]
     [InlineData("HorizontalMarginBox", "-1", 1, "水平余白")]
     [InlineData("VerticalMarginBox", "NaN", 1, "垂直余白")]
-    [InlineData("RefreshBox", "59", 2, "更新間隔")]
-    [InlineData("StartupTimeoutBox", "121", 2, "起動待ち")]
+    [InlineData("RefreshBox", "59", 3, "更新間隔")]
+    [InlineData("StartupTimeoutBox", "121", 3, "起動待ち")]
     public void SettingsWindow_RejectsInvalidValues(
         string fieldName,
         string value,
@@ -303,11 +321,13 @@ public sealed class SettingsWindowTests
         RunInSta(() =>
         {
             var window = CreateWindow();
+            window.DisplayModeBox.SelectedIndex = 1;
             window.ScaleBox.Text = "invalid";
             window.Loaded += (_, _) =>
             {
                 window.SaveButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 Assert.NotEmpty(window.ValidationMessage.Text);
+                Assert.Equal(1, window.DisplayModeBox.SelectedIndex);
                 window.ScaleBox.Text = "100";
                 Assert.Empty(window.ValidationMessage.Text);
                 window.Close();
@@ -317,10 +337,10 @@ public sealed class SettingsWindowTests
         });
     }
 
-    private static SettingsWindow CreateWindow()
+    private static SettingsWindow CreateWindow(AppSettings? settings = null)
     {
-        var settings = new AppSettings().Normalized();
-        return new SettingsWindow(settings, () => settings);
+        AppSettings current = (settings ?? new AppSettings()).Normalized();
+        return new SettingsWindow(current, () => current);
     }
 
     private static void Layout(Window window)

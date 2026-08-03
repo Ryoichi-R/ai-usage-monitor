@@ -100,6 +100,8 @@ public sealed class CodexViewModelTests
         Assert.Equal(Visibility.Collapsed, usage.CreditBalance.Visibility);
         Assert.Equal(Visibility.Collapsed, usage.AdditionalUsage.Visibility);
         Assert.Equal("使用上限の形式に対応していません", usage.StatusText);
+        Assert.Equal(ProviderStatusKind.Actionable, usage.StatusKind);
+        Assert.Equal(Visibility.Visible, usage.CompactStatusVisibility);
     }
 
     [Fact]
@@ -115,6 +117,8 @@ public sealed class CodexViewModelTests
         usage.Apply(AvailableSnapshot());
 
         Assert.Equal("利用可能な追加情報はありません", usage.StatusText);
+        Assert.Equal(ProviderStatusKind.OptionalDataUnavailable, usage.StatusKind);
+        Assert.Equal(Visibility.Collapsed, usage.CompactStatusVisibility);
     }
 
     [Fact]
@@ -210,8 +214,12 @@ public sealed class CodexViewModelTests
 
         Assert.Equal("SL受信 14:28", usage.FreshnessText);
         Assert.Contains("server measurement timestampではありません", usage.FreshnessToolTip);
+        Assert.StartsWith("SL受信 14:28\n", usage.FreshnessCompactToolTip, StringComparison.Ordinal);
+        Assert.Contains(usage.FreshnessToolTip, usage.FreshnessCompactToolTip, StringComparison.Ordinal);
         Assert.Contains("statusLine参考値 — 最新性未保証", usage.StatusText);
         Assert.Contains("TIMEOUT", usage.StatusText);
+        Assert.Equal(ProviderStatusKind.Actionable, usage.StatusKind);
+        Assert.Equal(Visibility.Visible, usage.CompactStatusVisibility);
     }
 
     [Fact]
@@ -234,6 +242,23 @@ public sealed class CodexViewModelTests
         Assert.Equal("CLI 14:29", usage.FreshnessText);
         Assert.Contains("/usage 画面の読取り完了時刻", usage.FreshnessToolTip);
         Assert.Contains("server measurement timestampではありません", usage.FreshnessToolTip);
+        Assert.StartsWith("CLI 14:29\n", usage.FreshnessCompactToolTip, StringComparison.Ordinal);
+        Assert.Contains(usage.FreshnessToolTip, usage.FreshnessCompactToolTip, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CodexCompactFreshnessRetainsFullTextWhenProvenanceIsEmpty()
+    {
+        var usage = new ProviderUsageViewModel("CODEX", () => FixedNow, Tokyo);
+
+        usage.Apply(Snapshot(
+            UsageProvider.Codex,
+            FixedNow.AddMinutes(-1),
+            FixedNow.AddMinutes(-1)));
+
+        Assert.NotEmpty(usage.FreshnessText);
+        Assert.Empty(usage.FreshnessToolTip);
+        Assert.Equal(usage.FreshnessText, usage.FreshnessCompactToolTip);
     }
 
     [Theory]

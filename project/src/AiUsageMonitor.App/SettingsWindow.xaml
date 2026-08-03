@@ -64,6 +64,16 @@
                 <ColumnDefinition Width="210" />
                 <ColumnDefinition Width="*" />
               </Grid.ColumnDefinitions>
+              <TextBlock Text="表示モード" VerticalAlignment="Center" />
+              <ComboBox x:Name="DisplayModeBox"
+                        Grid.Column="1"
+                        AutomationProperties.Name="表示モード" />
+            </Grid>
+            <Grid Style="{StaticResource FieldGrid}" Margin="4,14,4,3">
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="210" />
+                <ColumnDefinition Width="*" />
+              </Grid.ColumnDefinitions>
               <TextBlock Text="表示倍率（75～200%）" VerticalAlignment="Center" />
               <TextBox x:Name="ScaleBox"
                        Grid.Column="1"
@@ -141,6 +151,103 @@
                        Foreground="Gray"
                        TextWrapping="Wrap" />
             <TextBlock Text="表示倍率を変更すると、保存済みの位置は新しいウィジェットサイズに合わせて再計算されます。"
+                       Margin="4,0,4,12"
+                       Foreground="Gray"
+                       TextWrapping="Wrap" />
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem Header="外観">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel Margin="16">
+            <TextBlock Text="外観"
+                       FontSize="18"
+                       FontWeight="SemiBold"
+                       Margin="0,0,0,12" />
+            <TextBlock Text="フォント（空欄はシステム既定）" Margin="4,0,4,2" />
+            <TextBox x:Name="FontFamilyBox"
+                     Margin="4"
+                     AutomationProperties.Name="フォント" />
+            <TextBlock Text="色（#RRGGBB または #AARRGGBB）" Margin="4,12,4,4" FontWeight="SemiBold" />
+            <Grid Style="{StaticResource FieldGrid}">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="210"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+              <TextBlock Text="主要文字" VerticalAlignment="Center" />
+              <TextBox x:Name="ForegroundColorBox" Grid.Column="1" AutomationProperties.Name="主要文字色" />
+              <Button Grid.Column="2" Content="選択…" Padding="10,3" Margin="6,0,0,0" Click="SelectForegroundColor" />
+            </Grid>
+            <Grid Style="{StaticResource FieldGrid}">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="210"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+              <TextBlock Text="補助文字" VerticalAlignment="Center" />
+              <TextBox x:Name="MutedColorBox" Grid.Column="1" AutomationProperties.Name="補助文字色" />
+              <Button Grid.Column="2" Content="選択…" Padding="10,3" Margin="6,0,0,0" Click="SelectMutedColor" />
+            </Grid>
+            <Grid Style="{StaticResource FieldGrid}">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="210"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+              <TextBlock Text="アクセント" VerticalAlignment="Center" />
+              <TextBox x:Name="AccentColorBox" Grid.Column="1" AutomationProperties.Name="アクセント色" />
+              <Button Grid.Column="2" Content="選択…" Padding="10,3" Margin="6,0,0,0" Click="SelectAccentColor" />
+            </Grid>
+            <Grid Style="{StaticResource FieldGrid}">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="210"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+              <TextBlock Text="警告" VerticalAlignment="Center" />
+              <TextBox x:Name="WarningColorBox" Grid.Column="1" AutomationProperties.Name="警告色" />
+              <Button Grid.Column="2" Content="選択…" Padding="10,3" Margin="6,0,0,0" Click="SelectWarningColor" />
+            </Grid>
+            <Grid Style="{StaticResource FieldGrid}">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="210"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+              <TextBlock Text="危険" VerticalAlignment="Center" />
+              <TextBox x:Name="DangerColorBox" Grid.Column="1" AutomationProperties.Name="危険色" />
+              <Button Grid.Column="2" Content="選択…" Padding="10,3" Margin="6,0,0,0" Click="SelectDangerColor" />
+            </Grid>
+            <CheckBox x:Name="BackgroundEnabledBox"
+                      Content="背景を表示する"
+                      Margin="4,16,4,6"
+                      Checked="AppearanceControlChanged"
+                      Unchecked="AppearanceControlChanged" />
+            <CheckBox x:Name="HideBackgroundBox"
+                      Content="他のウィンドウと重なる部分では背景だけ隠す"
+                      Checked="AppearanceControlChanged"
+                      Unchecked="AppearanceControlChanged" />
+            <TextBlock Text="常に手前に表示する場合、情報文字を手前に残し、背景だけを通常ウィンドウの後ろへ分離します。"
+                       Margin="4,0,4,8"
+                       Foreground="Gray"
+                       TextWrapping="Wrap" />
+            <Grid Style="{StaticResource FieldGrid}">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="210"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+              <TextBlock Text="背景色" VerticalAlignment="Center" />
+              <TextBox x:Name="BackgroundColorBox" Grid.Column="1" AutomationProperties.Name="背景色" />
+              <Button Grid.Column="2" Content="選択…" Padding="10,3" Margin="6,0,0,0" Click="SelectBackgroundColor" />
+            </Grid>
+            <Grid Style="{StaticResource FieldGrid}">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="210"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+              <TextBlock Text="背景の不透明度（0～100%）" VerticalAlignment="Center" />
+              <TextBox x:Name="BackgroundOpacityBox" Grid.Column="1" AutomationProperties.Name="背景の不透明度" />
+            </Grid>
+            <Grid Style="{StaticResource FieldGrid}">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="210"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+              <TextBlock Text="背景の塗り方" VerticalAlignment="Center" />
+              <ComboBox x:Name="BackgroundFillModeBox" Grid.Column="1" AutomationProperties.Name="背景の塗り方" />
+            </Grid>
+            <Grid Style="{StaticResource FieldGrid}">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="210"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+              <TextBlock Text="フェード幅（5～50%）" VerticalAlignment="Center" />
+              <TextBox x:Name="BackgroundFadeBox" Grid.Column="1" AutomationProperties.Name="フェード幅" />
+            </Grid>
+            <Border x:Name="BackgroundPreview"
+                    Width="280"
+                    Height="84"
+                    Margin="4,14,4,8"
+                    CornerRadius="5"
+                    HorizontalAlignment="Left"
+                    BorderBrush="#808080"
+                    BorderThickness="1">
+              <TextBlock Text="背景プレビュー"
+                         HorizontalAlignment="Center"
+                         VerticalAlignment="Center"
+                         Foreground="White" />
+            </Border>
+            <TextBlock Text="背景の不透明度は背景だけに適用されます。既存のウィンドウ全体の不透明度とは別設定です。白い背景では文字色も併せて調整してください。"
                        Margin="4,0,4,12"
                        Foreground="Gray"
                        TextWrapping="Wrap" />

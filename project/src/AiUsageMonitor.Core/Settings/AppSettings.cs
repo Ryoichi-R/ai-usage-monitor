@@ -5,6 +5,8 @@ namespace AiUsageMonitor.Core.Settings;
 
 public enum PlacementAnchor { TopRight, BottomRight, TopLeft, BottomLeft }
 public enum PlacementMode { Preset, Custom }
+public enum WidgetDisplayMode { Standard, Compact }
+public enum BackgroundFillMode { Solid, EdgeFade }
 
 public sealed record AppSettings
 {
@@ -26,7 +28,20 @@ public sealed record AppSettings
     public bool AlwaysOnTop { get; init; } = true;
     public bool StartWithWindows { get; init; }
     public double UiScalePercent { get; init; } = 100;
+    public WidgetDisplayMode DisplayMode { get; init; } = WidgetDisplayMode.Standard;
     public double Opacity { get; init; } = 1;
+    public string? FontFamilyName { get; init; }
+    public string? ForegroundColor { get; init; }
+    public string MutedColor { get; init; } = AppearanceSettingsValidator.DefaultMutedColor;
+    public string AccentColor { get; init; } = AppearanceSettingsValidator.DefaultAccentColor;
+    public string WarningColor { get; init; } = AppearanceSettingsValidator.DefaultWarningColor;
+    public string DangerColor { get; init; } = AppearanceSettingsValidator.DefaultDangerColor;
+    public bool BackgroundEnabled { get; init; }
+    public string BackgroundColor { get; init; } = AppearanceSettingsValidator.DefaultBackgroundColor;
+    public double BackgroundOpacity { get; init; } = AppearanceSettingsValidator.DefaultBackgroundOpacity;
+    public BackgroundFillMode BackgroundFillMode { get; init; } = BackgroundFillMode.Solid;
+    public double BackgroundEdgeFadePercent { get; init; } = AppearanceSettingsValidator.DefaultBackgroundEdgeFadePercent;
+    public bool HideBackgroundBehindWindows { get; init; }
     public string? MonitorDeviceName { get; init; }
     public PlacementAnchor Anchor { get; init; } = PlacementAnchor.TopRight;
     public PlacementMode PlacementMode { get; init; } = PlacementMode.Preset;
@@ -48,6 +63,18 @@ public sealed record AppSettings
             StartupTimeoutSeconds = Math.Clamp(StartupTimeoutSeconds, 5, 120),
             UiScalePercent = double.IsFinite(UiScalePercent) ? Math.Clamp(UiScalePercent, 75, 200) : 100,
             Opacity = double.IsFinite(Opacity) ? Math.Clamp(Opacity, .2, 1) : 1,
+            FontFamilyName = AppearanceSettingsValidator.NormalizeFontFamilyName(FontFamilyName),
+            ForegroundColor = AppearanceSettingsValidator.NormalizeOptionalColor(ForegroundColor),
+            MutedColor = AppearanceSettingsValidator.NormalizeColor(MutedColor, AppearanceSettingsValidator.DefaultMutedColor),
+            AccentColor = AppearanceSettingsValidator.NormalizeColor(AccentColor, AppearanceSettingsValidator.DefaultAccentColor),
+            WarningColor = AppearanceSettingsValidator.NormalizeColor(WarningColor, AppearanceSettingsValidator.DefaultWarningColor),
+            DangerColor = AppearanceSettingsValidator.NormalizeColor(DangerColor, AppearanceSettingsValidator.DefaultDangerColor),
+            BackgroundColor = AppearanceSettingsValidator.NormalizeOpaqueColor(BackgroundColor),
+            BackgroundOpacity = double.IsFinite(BackgroundOpacity) ? Math.Clamp(BackgroundOpacity, 0, 1) : DefaultBackgroundOpacity,
+            BackgroundFillMode = Enum.IsDefined(BackgroundFillMode) ? BackgroundFillMode : BackgroundFillMode.Solid,
+            BackgroundEdgeFadePercent = double.IsFinite(BackgroundEdgeFadePercent)
+                ? Math.Clamp(BackgroundEdgeFadePercent, 5, 50)
+                : AppearanceSettingsValidator.DefaultBackgroundEdgeFadePercent,
             HorizontalMarginDip = double.IsFinite(HorizontalMarginDip) ? Math.Clamp(HorizontalMarginDip, 0, 200) : 12,
             VerticalMarginDip = double.IsFinite(VerticalMarginDip) ? Math.Clamp(VerticalMarginDip, 0, 200) : 12,
             CustomLeftFraction = NormalizeFraction(CustomLeftFraction),
@@ -57,11 +84,22 @@ public sealed record AppSettings
             ClaudeUsageAcquisitionMode = Enum.IsDefined(ClaudeUsageAcquisitionMode)
             ? ClaudeUsageAcquisitionMode
             : ClaudeUsageAcquisitionMode.Automatic,
+            DisplayMode = Enum.IsDefined(DisplayMode)
+                ? DisplayMode
+                : WidgetDisplayMode.Standard,
             ShowCredits = monetaryInitialized && ShowCredits,
             ShowAdditionalUsage = monetaryInitialized && ShowAdditionalUsage,
             CodexAccounts = accounts,
         };
     }
+
+    public string EffectiveBackgroundRgb => AppearanceSettingsValidator.NormalizeOpaqueColor(BackgroundColor)[3..];
+
+    public double EffectiveBackgroundOpacity => BackgroundEnabled
+        ? Math.Clamp(BackgroundOpacity, 0, 1)
+        : 0;
+
+    private const double DefaultBackgroundOpacity = AppearanceSettingsValidator.DefaultBackgroundOpacity;
 
     private static List<CodexAccountSettings> NormalizeAccounts(
         IReadOnlyList<CodexAccountSettings>? accounts)

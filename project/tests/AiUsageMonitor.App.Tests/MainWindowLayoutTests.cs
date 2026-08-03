@@ -251,10 +251,10 @@ public sealed class MainWindowLayoutTests
             try
             {
                 TextBlock codex = Assert.Single(
-                    Descendants<TextBlock>(root),
+                    Descendants<TextBlock>((StackPanel)window.FindName("StandardContentPanel")!),
                     text => text.Text == "取得 21:03");
                 TextBlock claude = Assert.Single(
-                    Descendants<TextBlock>(root),
+                    Descendants<TextBlock>((StackPanel)window.FindName("StandardContentPanel")!),
                     text => text.Text == "取得 21:02");
                 var codexHeader = Assert.IsType<Grid>(
                     VisualTreeHelper.GetParent(codex));
@@ -401,7 +401,7 @@ public sealed class MainWindowLayoutTests
 
             // Root論理幅は倍率に依存せず不変。設定漏れ(NaN)なら失敗する。
             Assert.False(double.IsNaN(root.Width));
-            Assert.Equal(MainWindow.BaseWidgetWidthDip, root.Width, 3);
+            Assert.Equal(MainWindow.StandardWidgetWidthDip, root.Width, 3);
 
             var transform = Assert.IsType<ScaleTransform>(root.LayoutTransform);
             Assert.Equal(scale, transform.ScaleX, 3);
@@ -411,7 +411,7 @@ public sealed class MainWindowLayoutTests
             Assert.True(window.LayoutTransform is null || IsIdentity(window.LayoutTransform));
 
             // 設定値としてのWindow.Widthが論理幅×倍率。
-            Assert.Equal(MainWindow.BaseWidgetWidthDip * scale, window.Width, 3);
+            Assert.Equal(MainWindow.StandardWidgetWidthDip * scale, window.Width, 3);
 
             // 倍率はRoot.LayoutTransformに集約され、Root配下では独立した拡大が起きない。
             // Root→Windowの実効倍率(=scale)は表示が必要なため層Bで確認する。
@@ -439,8 +439,8 @@ public sealed class MainWindowLayoutTests
                 double scale = percent / 100d;
                 var transform = Assert.IsType<ScaleTransform>(root.LayoutTransform);
                 Assert.Equal(scale, transform.ScaleX, 3);
-                Assert.Equal(MainWindow.BaseWidgetWidthDip * scale, window.Width, 3);
-                Assert.Equal(MainWindow.BaseWidgetWidthDip, root.Width, 3);
+                Assert.Equal(MainWindow.StandardWidgetWidthDip * scale, window.Width, 3);
+                Assert.Equal(MainWindow.StandardWidgetWidthDip, root.Width, 3);
             }
 
             window.Close();
@@ -551,6 +551,7 @@ public sealed class MainWindowLayoutTests
             singleViewModel.ShowClaude = provider == "Claude";
             var singleWindow = CreateLaidOutWindow(singleViewModel, 100, out Border singleRoot);
 
+
             Assert.True(
                 singleRoot.RenderSize.Height < bothHeight,
                 $"{provider}-only logical height {singleRoot.RenderSize.Height} should be < both {bothHeight}.");
@@ -604,10 +605,10 @@ public sealed class MainWindowLayoutTests
         // 非表示のWindow自身をMeasure/Arrangeしても、HwndSourceがないためContentの
         // RenderSizeが0のままになる。層AではWindow直下のRootを直接レイアウトし、
         // 論理要素のDesiredSize・RenderSize・相対境界を実体として検証する。
-        var root = Assert.IsType<Border>(window.FindName("Root"));
-        root.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-        root.Arrange(new Rect(root.DesiredSize));
-        root.UpdateLayout();
+        var host = Assert.IsType<Grid>(window.FindName("AppearanceHost"));
+        host.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        host.Arrange(new Rect(host.DesiredSize));
+        host.UpdateLayout();
     }
 
     private static bool IsIdentity(Transform transform) =>

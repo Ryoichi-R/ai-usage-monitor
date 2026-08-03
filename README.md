@@ -8,6 +8,7 @@ OpenAIおよびAnthropicの公式CLIと連携する、Windows用のデスクト�
 - プライバシー: [project/PRIVACY.md](project/PRIVACY.md)
 - セキュリティ報告: [project/SECURITY.md](project/SECURITY.md)
 - 第三者コンポーネントの通知: [project/THIRD-PARTY-NOTICES.md](project/THIRD-PARTY-NOTICES.md)
+- 公開候補と成果物の扱い: [release/README.md](release/README.md)
 
 ## 動作要件
 

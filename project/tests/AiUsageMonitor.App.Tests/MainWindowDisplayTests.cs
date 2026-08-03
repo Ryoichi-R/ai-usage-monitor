@@ -33,7 +33,7 @@ public sealed class MainWindowDisplayTests
             using var host = ShownWindow(scalePercent, out MainWindow window, out Border root);
             double scale = scalePercent / 100d;
 
-            AssertClose(MainWindow.BaseWidgetWidthDip * scale, window.ActualWidth, 1.0);
+            AssertClose(MainWindow.StandardWidgetWidthDip * scale, window.ActualWidth, 1.0);
 
             // Root変形後幅とWindowクライアント幅の差が1 DIP以内(幅の二重管理が破綻していない)。
             double rootScaledWidth = root.RenderSize.Width * scale;
@@ -229,13 +229,14 @@ public sealed class MainWindowDisplayTests
         MainWindowScaleTestSupport.RunInSta(() =>
         {
             // WorkingArea超過のclamp規則自体はCore(WidgetPlacementCalculatorTests)で網羅する。
-            // 実表示では、いずれの倍率でもWindowが作業領域内へ収まる(はみ出さない)ことを確認する。
+            // 四辺フェードの透明帯は作業領域外へ出られるため、情報領域だけを確認する。
             foreach (double percent in WorkAreaScales)
             {
                 using var host = ShownWindow(percent, out MainWindow window, out _);
                 Rect area = PrimaryWorkAreaDip(window);
-                Assert.True(window.Left >= area.Left - 1, $"{percent}%: Left {window.Left} < area {area.Left}.");
-                Assert.True(window.Top >= area.Top - 1, $"{percent}%: Top {window.Top} < area {area.Top}.");
+                Rect information = window.GetInformationBoundsInScreenDip();
+                Assert.True(information.Left >= area.Left - 1, $"{percent}%: Information left {information.Left} < area {area.Left}.");
+                Assert.True(information.Top >= area.Top - 1, $"{percent}%: Information top {information.Top} < area {area.Top}.");
             }
         });
     }

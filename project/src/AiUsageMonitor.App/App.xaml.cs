@@ -30,6 +30,7 @@ public partial class App : System.Windows.Application
     private FileSystemSettingsStore? _store;
     private AppSettings _settings = new();
     private MainWindow? _window;
+    private BackgroundLayerCoordinator? _backgroundCoordinator;
     private UsageViewModel? _viewModel;
     private TrayController? _tray;
     private CodexAccountsCoordinator? _codexCoordinator;
@@ -72,13 +73,19 @@ public partial class App : System.Windows.Application
             ConfigureCodexViewModels();
             _window = new MainWindow { DataContext = _viewModel };
             _window.ApplySettings(_settings, false);
+            _backgroundCoordinator = new BackgroundLayerCoordinator(_window, Dispatcher);
+            _backgroundCoordinator.Apply(_settings);
             _window.UserPositionChanged += async () => { _settings = _window.CaptureCustomPosition(); await _store.SaveAsync(_settings); };
             _window.Show();
             _tray = new TrayController();
+            _window.TopmostHealthChanged += degraded => _tray?.SetTopmostDegraded(degraded);
+            _tray.SetTopmostDegraded(_window.IsTopmostDegraded);
+            _tray.SetDisplayMode(_settings.DisplayMode);
             _tray.ClaudeSetupRequested += ShowClaudeSetup;
             _tray.SettingsRequested += ShowSettings;
             _tray.RefreshRequested += () => _ = RefreshAsync(_lifetime.Token, manual: true);
-            _tray.ToggleVisibilityRequested += () => { if (_window.IsVisible) _window.Hide(); else _window.Show(); };
+            _tray.ToggleVisibilityRequested += () => _backgroundCoordinator?.SetWidgetVisible(!_window.IsVisible);
+            _tray.DisplayModeRequested += mode => _ = ApplyDisplayModeAsync(mode);
             _tray.ExitRequested += Shutdown;
             _codexCoordinator = new(
                 Environment.GetEnvironmentVariable("CODEX_HOME"),
@@ -282,18 +289,60 @@ public partial class App : System.Windows.Application
             ShowClaudeSetup();
         };
         if (dialog.ShowDialog() != true) return;
-        _settings = dialog.Result.Normalized();
-        await _store.SaveAsync(_settings);
+        AppSettings candidate = dialog.Result.Normalized();
+        try
+        {
+            await _store.SaveAsync(candidate);
+        }
+        catch (Exception exception)
+        {
+            System.Windows.MessageBox.Show(
+                $"設定を保存できませんでした。変更は適用されていません。\n{exception.Message}",
+                "AI Usage Monitor",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        _settings = candidate;
+        _tray?.SetDisplayMode(_settings.DisplayMode);
         // 表示切替をViewModelへ先に反映してからApplySettingsを呼ぶ。
         // 逆順だと保存前のセクション高で下端配置され、直後の高さ変化と競合する。
         _viewModel!.ShowCodex = CodexFeaturesEnabled();
         _viewModel!.ShowClaude = _settings.ShowClaudeUsage;
         _window.ApplySettings(_settings, true);
+        _backgroundCoordinator?.Apply(_settings);
         await ConfigureCodexAsync();
         ConfigureClaudeListener();
         ApplyStartupSetting();
         await RefreshAsync(_lifetime.Token, manual: true);
         if (!wasClaudeEnabled && _settings.ShowClaudeUsage && !setupOpenedFromDialog) ShowClaudeSetup();
+    }
+
+    private async Task ApplyDisplayModeAsync(WidgetDisplayMode mode)
+    {
+        if (_window is null || _store is null || mode == _settings.DisplayMode) return;
+        AppSettings previous = _settings;
+        AppSettings candidate = (_settings with { DisplayMode = mode }).Normalized();
+        try
+        {
+            await _store.SaveAsync(candidate);
+        }
+        catch (Exception exception)
+        {
+            _tray?.SetDisplayMode(previous.DisplayMode);
+            System.Windows.MessageBox.Show(
+                $"表示モードを保存できませんでした。\n{exception.Message}",
+                "AI Usage Monitor",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        _settings = candidate;
+        _window.ApplySettings(_settings, reposition: true);
+        _backgroundCoordinator?.Apply(_settings);
+        _tray?.SetDisplayMode(_settings.DisplayMode);
     }
 
     private async Task ShowFirstRunAsync()
@@ -445,6 +494,7 @@ public partial class App : System.Windows.Application
     protected override async void OnExit(ExitEventArgs e)
     {
         _lifetime.Cancel();
+        _backgroundCoordinator?.Dispose();
         _claudeRuntime.Disable();
         // 通常はOperationCanceledExceptionだけで終わるが、pollループ内で拾いきれない
         // 想定外の例外が残っていた場合でも、以降の破棄処理とアプリ終了は必ず継続する。
