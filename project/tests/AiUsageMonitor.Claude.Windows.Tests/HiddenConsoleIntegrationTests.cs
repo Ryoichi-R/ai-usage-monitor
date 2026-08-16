@@ -159,6 +159,37 @@ public sealed class HiddenConsoleIntegrationTests
     }
 
     [WindowsFact]
+    public async Task ActiveSourceReturnsConsoleBufferReadFailedWhenHelperReadKeepsFailing()
+    {
+        // CLIプロセス自体は正常に起動しReadyになるが、helper経由のscreen buffer読取りだけが
+        // 一貫して失敗するケース。認証は壊れていないため、汎用READY_TIMEOUTではなく
+        // 取得経路の異常として区別できるCONSOLE_BUFFER_READ_FAILEDを返す。
+        string root = await CreateActiveSourceRootAsync("ready");
+        string readFailingHelper = CreateFakeCliVariant("helper-read-fails");
+        try
+        {
+            var source = new ClaudeCliActiveSource(
+                null,
+                Path.Combine(root, "claude-statusline-bridge.ps1"),
+                TimeSpan.FromSeconds(2),
+                new ClaudeWorkspaceProvisioner(root),
+                new ConsoleHelperClient(readFailingHelper),
+                _ => new ClaudeExecutableInfo(FindFakeCli(), "2.1.218", true, "Anthropic, PBC", null),
+                (_, _, _) => Task.FromResult(new ClaudeCliCapabilities(true, "2.1.218", null)));
+
+            var observation = await source.RefreshAsync(CancellationToken.None);
+
+            Assert.Equal(UsageAvailability.Unavailable, observation.Availability);
+            Assert.Equal("CONSOLE_BUFFER_READ_FAILED", observation.Reason);
+        }
+        finally
+        {
+            await DeleteDirectoryWithRetryAsync(root);
+            await DeleteFileWithRetryAsync(readFailingHelper);
+        }
+    }
+
+    [WindowsFact]
     public async Task ActiveSourceMapsLocatorCapabilityAndWorkspaceFailures()
     {
         string executable = FindFakeCli();
@@ -224,6 +255,33 @@ public sealed class HiddenConsoleIntegrationTests
     }
 
     private static string FindFakeCli() => AiUsageMonitor.TestSupport.FakeExecutableLocator.FindClaudeFakeCli();
+
+    private static string CreateFakeCliVariant(string name)
+    {
+        string source = FindFakeCli();
+        string variant = Path.Combine(
+            Path.GetDirectoryName(source)!,
+            $"{name}-{Guid.NewGuid():N}.exe");
+        File.Copy(source, variant);
+        return variant;
+    }
+
+    private static async Task DeleteFileWithRetryAsync(string path)
+    {
+        for (int attempt = 0; attempt < 20; attempt++)
+        {
+            try
+            {
+                File.Delete(path);
+                return;
+            }
+            catch (Exception exception) when (
+                (exception is IOException or UnauthorizedAccessException) && attempt < 19)
+            {
+                await Task.Delay(100);
+            }
+        }
+    }
 
     private static async Task<string> CreateActiveSourceRootAsync(string mode)
     {

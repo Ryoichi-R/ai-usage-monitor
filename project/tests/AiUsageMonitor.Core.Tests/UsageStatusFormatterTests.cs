@@ -108,6 +108,50 @@ public sealed class UsageStatusFormatterTests
         Assert.Equal("更新が停止しています", UsageStatusFormatter.Format("CODEX", snapshot));
     }
 
+    [Theory]
+    [InlineData("CLAUDE_SIGNED_OUT", "更新が停止 — Claude Codeへサインインしてください")]
+    [InlineData("CLAUDE_NOT_INSTALLED", "更新が停止 — Claude Codeが見つかりません")]
+    [InlineData("CLAUDE_TRUST_REQUIRED", "更新が停止 — 連携設定のフォルダー信頼が必要です")]
+    [InlineData("RESET_PASSED", "5時間枠の更新待ち — 自動再開します")]
+    [InlineData("CONSOLE_BUFFER_READ_FAILED", "取得経路エラー")]
+    [InlineData("RPC_TIMEOUT", "更新が停止しています")]
+    [InlineData("RECEIVE_TIMEOUT", "更新が停止しています")]
+    [InlineData("READY_TIMEOUT", "更新が停止しています")]
+    [InlineData(null, "更新が停止しています")]
+    public void StaleClaudeReasonsSelectActionableWidgetMessage(string? reason, string expected)
+    {
+        UsageSnapshot snapshot = StaleClaudeSnapshot(reason);
+        Assert.Equal(expected, UsageStatusFormatter.Format("CLAUDE", snapshot));
+    }
+
+    [Theory]
+    [InlineData(
+        "CLAUDE_SIGNED_OUT",
+        "更新が停止しています。Claude Codeへサインインしてください。")]
+    [InlineData(
+        "CLAUDE_NOT_INSTALLED",
+        "更新が停止しています。Claude Codeが見つかりません。公式CLIをインストールしてください。")]
+    [InlineData(
+        "CLAUDE_TRUST_REQUIRED",
+        "更新が停止しています。連携設定のフォルダー信頼が必要です。Claude Code側でフォルダーを信頼してください。")]
+    [InlineData(
+        "RESET_PASSED",
+        "5時間枠の更新待ちです。自動的に再開します。しばらく待っても再開しない場合はお知らせください。")]
+    [InlineData(
+        "CONSOLE_BUFFER_READ_FAILED",
+        "Claude利用情報の取得経路でエラーが発生しました。アプリ再起動後も続く場合はtroubleshootingを確認してください。")]
+    [InlineData(
+        "RPC_TIMEOUT",
+        "更新が停止しています。Claude Codeでプロンプトを実行してください。")]
+    [InlineData(
+        null,
+        "更新が停止しています。Claude Codeでプロンプトを実行してください。")]
+    public void StaleClaudeReasonsSelectActionableConnectionMessage(string? reason, string expected)
+    {
+        UsageSnapshot snapshot = StaleClaudeSnapshot(reason);
+        Assert.Equal(expected, UsageStatusFormatter.FormatClaudeConnection(snapshot));
+    }
+
     private static UsageSnapshot Snapshot(
         UsageProvider provider,
         UsageAvailability availability,
@@ -115,5 +159,11 @@ public sealed class UsageStatusFormatterTests
     {
         DateTimeOffset now = DateTimeOffset.UtcNow;
         return new(provider, now, now, availability, reason, null, [], null, false, null);
+    }
+
+    private static UsageSnapshot StaleClaudeSnapshot(string? reason)
+    {
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        return new(UsageProvider.Claude, now, now, UsageAvailability.Stale, reason, null, [], null, true, null);
     }
 }

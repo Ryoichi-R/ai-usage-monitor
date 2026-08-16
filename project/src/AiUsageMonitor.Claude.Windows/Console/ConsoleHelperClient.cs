@@ -8,7 +8,10 @@ namespace AiUsageMonitor.Claude.Windows.Console;
 
 public sealed class ConsoleHelperClient
 {
-    public const int MaximumResponseChars = 64 * 1024;
+    // ClaudeConsoleHelper.MaximumWidth(400) × MaximumHeight(120)行の生データを、
+    // JsonSerializerの既定エンコーダーで実測した最悪ケース膨張（非ASCII/エスケープ対象文字の
+    // 全面使用）は288,466文字だった。metadata余裕を含め320 KiB(=327,680文字)を明示的な上限とする。
+    public const int MaximumResponseChars = 320 * 1024;
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
         PropertyNameCaseInsensitive = true,

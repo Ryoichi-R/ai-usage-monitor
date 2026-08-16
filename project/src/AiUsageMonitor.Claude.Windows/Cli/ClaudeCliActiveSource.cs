@@ -156,6 +156,10 @@ public sealed class ClaudeCliActiveSource : IClaudeUsageSource
         DateTimeOffset deadline = DateTimeOffset.UtcNow + _startupTimeout;
         bool usageSent = false;
         UsageSnapshot? lastIncompleteUsageScreen = null;
+        // 直近の試行がscreen buffer読取り失敗だったかを記録する。読取り失敗が続いたまま
+        // deadlineに達した場合、汎用のREADY_TIMEOUTではなくCONSOLE_BUFFER_READ_FAILEDを
+        // 返し、認証は正常でも取得経路が壊れているケースを区別できるようにする。
+        string? lastReadFailureReason = null;
         // 画面confirmationのたびに（helperを経由して）monitor本体の実行ファイルを
         // 子processとして起動し直している。固定100msだと1回のusage取得で数十回spawn
         // しうるため、進捗がない待ち区間だけ間隔を広げてspawn頻度を下げる。
@@ -175,10 +179,12 @@ public sealed class ClaudeCliActiveSource : IClaudeUsageSource
                 cancellationToken).ConfigureAwait(false);
             if (!screen.Ok)
             {
+                lastReadFailureReason = screen.Reason ?? "SCREEN_READ_FAILED";
                 await Task.Delay(idlePollDelayMs, cancellationToken).ConfigureAwait(false);
                 idlePollDelayMs = Math.Min(idlePollDelayMs + 100, MaximumIdlePollDelayMs);
                 continue;
             }
+            lastReadFailureReason = null;
 
             ClaudeCliScreenSignature signature =
                 ClaudeCliScreenStateMachine.Classify(screen.Lines);
@@ -242,7 +248,11 @@ public sealed class ClaudeCliActiveSource : IClaudeUsageSource
             }
         }
         return lastIncompleteUsageScreen ??
-            Failure(DateTimeOffset.UtcNow, UsageAvailability.Unavailable, "READY_TIMEOUT", version);
+            Failure(
+                DateTimeOffset.UtcNow,
+                UsageAvailability.Unavailable,
+                lastReadFailureReason is not null ? "CONSOLE_BUFFER_READ_FAILED" : "READY_TIMEOUT",
+                version);
     }
 
     private static ClaudeUsageObservation Observation(

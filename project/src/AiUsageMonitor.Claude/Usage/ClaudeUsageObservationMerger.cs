@@ -11,6 +11,18 @@ public sealed class ClaudeUsageObservationMerger
 {
     public static readonly TimeSpan ResetEqualityTolerance = UsageWindowPolicy.ResetPrecisionTolerance;
     public static readonly TimeSpan StaleAfter = TimeSpan.FromMinutes(10);
+
+    /// <summary>
+    /// staleAfter経過時にも汎用timeout理由へ丸めず引き継ぐ、利用者操作で解消できる終端理由。
+    /// <see cref="AiUsageMonitor.Core.Presentation.UsageStatusFormatter"/>のstale時reason分岐と対応させる。
+    /// </summary>
+    private static readonly HashSet<string> ActionableStaleReasons = new(StringComparer.Ordinal)
+    {
+        "CLAUDE_SIGNED_OUT",
+        "CLAUDE_TRUST_REQUIRED",
+        "CLAUDE_NOT_INSTALLED",
+    };
+
     private readonly object _sync = new();
     private UsageSnapshot? _current;
     private int _missingCount;
@@ -33,7 +45,17 @@ public sealed class ClaudeUsageObservationMerger
             if (_current is null) return UsageSnapshot.Loading(UsageProvider.Claude, now) with { Availability = UsageAvailability.Setup, Reason = "CLAUDE_SETUP" };
             bool expired = _current.Windows.Any(window => window.ResetsAt is { } reset && reset <= now);
             bool old = now - _current.ReceivedAt > staleAfter;
-            return expired || old ? _current with { Availability = UsageAvailability.Stale, Reason = expired ? "RESET_PASSED" : "RECEIVE_TIMEOUT", IsStale = true } : _current;
+            if (!expired && !old) return _current;
+
+            // reset通過は既知の待機状態としてRESET_PASSEDに固定する。TTL超過側は、
+            // stale化前の理由が実行可能な終端状態（SignedOut等）ならRECEIVE_TIMEOUTへ
+            // 丸めず引き継ぐ。それ以外（RPCタイムアウト等の一時的失敗）は従来どおり。
+            string reason = expired
+                ? "RESET_PASSED"
+                : _current.Reason is { } currentReason && ActionableStaleReasons.Contains(currentReason)
+                    ? currentReason
+                    : "RECEIVE_TIMEOUT";
+            return _current with { Availability = UsageAvailability.Stale, Reason = reason, IsStale = true };
         }
     }
 

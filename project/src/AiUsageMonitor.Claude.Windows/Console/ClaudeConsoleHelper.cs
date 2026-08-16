@@ -81,16 +81,25 @@ public static class ClaudeConsoleHelper
             if (!Native.GetConsoleScreenBufferInfo(output, out ConsoleScreenBufferInfo info))
                 return Failure("SCREEN_INFO_FAILED");
 
-            int width = info.Window.Right - info.Window.Left + 1;
-            int height = info.Window.Bottom - info.Window.Top + 1;
-            if (width <= 0 || height <= 0 || width > MaximumWidth || height > MaximumHeight)
+            // screen buffer全体の物理末尾ではなく、現在のwindow（viewport）下端を基準に
+            // 遡って直近最大MaximumHeight行を読む。consoleのwindowはカーソル追従で自動
+            // スクロールするため、Window.Bottom付近が常に最新の描画位置に近い（buffer全体の
+            // 末尾は、Console.Clear()相当の全面再描画直後は未使用の空白域になりうる）。
+            // window矩形の可視行数だけでは/usageの可変長描画でCurrent sessionが領域外へ
+            // 押し出されるため、可視行数を超えた直近scrollbackも対象に含める。最新frameの
+            // 切り出しはClaudeCliUsageScreenParser側で行う。
+            int windowBottom = info.Window.Bottom;
+            if (!TryGetReadWidth(info.Size.X, out int width) || windowBottom < 0)
                 return Failure("SCREEN_BOUNDS_INVALID");
 
+            int height = Math.Min(windowBottom + 1, MaximumHeight);
+            short startY = checked((short)(windowBottom + 1 - height));
+
             var lines = new List<string>(height);
-            for (short y = info.Window.Top; y <= info.Window.Bottom; y++)
+            for (short y = startY; y <= windowBottom; y++)
             {
                 var builder = new StringBuilder(width);
-                var position = new Coord(info.Window.Left, y);
+                var position = new Coord(0, y);
                 if (!Native.ReadConsoleOutputCharacter(
                         output,
                         builder,
@@ -176,6 +185,17 @@ public static class ClaudeConsoleHelper
 
     private static ConsoleHelperResponse Failure(string reason) =>
         new(false, reason, [], 0, 0, 0);
+
+    internal static bool TryGetReadWidth(int bufferWidth, out int width)
+    {
+        if (bufferWidth <= 0)
+        {
+            width = 0;
+            return false;
+        }
+        width = Math.Min(bufferWidth, MaximumWidth);
+        return true;
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     private readonly struct Coord(short x, short y)

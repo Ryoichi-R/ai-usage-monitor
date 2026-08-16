@@ -95,6 +95,24 @@ public sealed class ClaudeWindowsInfrastructureTests
     }
 
     [Theory]
+    [InlineData(-1, false, 0)]
+    [InlineData(0, false, 0)]
+    [InlineData(120, true, 120)]
+    [InlineData(400, true, 400)]
+    [InlineData(401, true, 400)]
+    [InlineData(short.MaxValue, true, 400)]
+    public void ConsoleReadWidthIsBoundedWithoutRejectingWideBuffers(
+        int bufferWidth,
+        bool expectedSuccess,
+        int expectedWidth)
+    {
+        bool success = ClaudeConsoleHelper.TryGetReadWidth(bufferWidth, out int width);
+
+        Assert.Equal(expectedSuccess, success);
+        Assert.Equal(expectedWidth, width);
+    }
+
+    [Theory]
     [InlineData(new string[] { "このフォルダーを信頼しますか？" }, ClaudeCliScreenSignature.TrustPrompt)]
     [InlineData(new string[] { "ログインしてください" }, ClaudeCliScreenSignature.SignedOut)]
     [InlineData(new string[] { "テキストスタイルを選択" }, ClaudeCliScreenSignature.SetupScreen)]
@@ -172,6 +190,47 @@ public sealed class ClaudeWindowsInfrastructureTests
 
             Assert.False(result.Ok);
             Assert.Equal(expectedReason, result.Reason);
+        }
+        finally
+        {
+            await DeleteFileWithRetryAsync(variant);
+        }
+    }
+
+    [Fact]
+    public async Task HelperClientAcceptsResponseAtExactCharacterLimit()
+    {
+        string variant = CreateFakeCliVariant("helper-at-limit");
+        try
+        {
+            var client = new ConsoleHelperClient(variant);
+            ConsoleHelperResponse result = await client.ReadAsync(
+                1,
+                TimeSpan.FromSeconds(5),
+                CancellationToken.None);
+
+            Assert.True(result.Ok);
+        }
+        finally
+        {
+            await DeleteFileWithRetryAsync(variant);
+        }
+    }
+
+    [Fact]
+    public async Task HelperClientRejectsResponseOneCharacterOverLimit()
+    {
+        string variant = CreateFakeCliVariant("helper-oversized");
+        try
+        {
+            var client = new ConsoleHelperClient(variant);
+            ConsoleHelperResponse result = await client.ReadAsync(
+                1,
+                TimeSpan.FromSeconds(5),
+                CancellationToken.None);
+
+            Assert.False(result.Ok);
+            Assert.Equal("HELPER_INVALID_RESPONSE", result.Reason);
         }
         finally
         {

@@ -10,7 +10,9 @@ public sealed class ClaudeCliScreenStateMachineTests
     [Theory]
     [InlineData("trust-prompt-en.txt", ClaudeCliScreenSignature.TrustPrompt)]
     [InlineData("setup-screen-en.txt", ClaudeCliScreenSignature.SetupScreen)]
+    [InlineData("setup-screen-login-method-en.txt", ClaudeCliScreenSignature.SetupScreen)]
     [InlineData("signed-out-en.txt", ClaudeCliScreenSignature.SignedOut)]
+    [InlineData("signed-out-not-logged-in-en.txt", ClaudeCliScreenSignature.SignedOut)]
     [InlineData("usage-screen-en.txt", ClaudeCliScreenSignature.UsageScreen)]
     [InlineData("usage-screen-ja.txt", ClaudeCliScreenSignature.UsageScreen)]
     [InlineData("ready-en.txt", ClaudeCliScreenSignature.Ready)]
@@ -28,6 +30,22 @@ public sealed class ClaudeCliScreenStateMachineTests
             "? for shortcuts",
         ];
         Assert.Equal(ClaudeCliScreenSignature.TrustPrompt, ClaudeCliScreenStateMachine.Classify(lines));
+    }
+
+    [Fact]
+    public void SignedOutWinsOverReadyAnchorsOnTheSameScreen()
+    {
+        // 2026-08-15インシデントの実測画面を再現する回帰test（account情報は含まない）。
+        // Ready判定に使うReadyAnchors（[Screen Reader Mode: on via flag]）とHasPromptBox（$）が
+        // 同一画面に存在しても、SignedOutがReadyより先に評価されるため誤ってReadyへ落ちない。
+        string[] lines =
+        [
+            "API Usage Billing",
+            "Not logged in · Run /login",
+            "[Screen Reader Mode: on via flag]",
+            "$",
+        ];
+        Assert.Equal(ClaudeCliScreenSignature.SignedOut, ClaudeCliScreenStateMachine.Classify(lines));
     }
 
     [Fact]

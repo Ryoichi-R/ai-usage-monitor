@@ -28,6 +28,10 @@ public static class ClaudeCliScreenStateMachine
         "Please run /login",
         "Invalid API key",
         "ログインしてください",
+        // 現行CLI（2.1.220 / 2.1.233 実測）が未ログイン時に表示する文言。
+        // "Run /login" 単独はSetupScreenのlogin方式選択画面にも現れるため追加しない。
+        // 単独追加すると、その画面をSignedOutへ誤分類する。
+        "Not logged in",
     ];
 
     private static readonly string[] UsageScreenAnchors =

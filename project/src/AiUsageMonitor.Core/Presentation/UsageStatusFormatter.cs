@@ -33,9 +33,24 @@ public static class UsageStatusFormatter
         };
     }
 
+    // stale化してもTTL超過理由(RECEIVE_TIMEOUT)へ丸めず引き継がれる、利用者操作で解消できる
+    // 終端理由・既知の待機理由・取得経路異常。ClaudeUsageObservationMergerのActionableStaleReasons
+    // と対応する（RESET_PASSEDとCONSOLE_BUFFER_READ_FAILEDはMerger側で丸めの対象にしていない）。
+    // compact widget表示（DisplayMode = Compact）でも同じ理由別文言をそのまま出す。widgetの
+    // 視覚デザイン変更（表示切替の新設）を避けるため、短縮形の出し分けは行わない（owner判断）。
+    private static string FormatClaudeStaleReason(string? reason) => reason switch
+    {
+        "CLAUDE_SIGNED_OUT" => "更新が停止 — Claude Codeへサインインしてください",
+        "CLAUDE_NOT_INSTALLED" => "更新が停止 — Claude Codeが見つかりません",
+        "CLAUDE_TRUST_REQUIRED" => "更新が停止 — 連携設定のフォルダー信頼が必要です",
+        "RESET_PASSED" => "5時間枠の更新待ち — 自動再開します",
+        "CONSOLE_BUFFER_READ_FAILED" => "取得経路エラー",
+        _ => "更新が停止しています",
+    };
+
     private static string FormatClaude(UsageSnapshot snapshot) =>
         snapshot.IsStale || snapshot.Availability == UsageAvailability.Stale
-            ? "更新が停止しています"
+            ? FormatClaudeStaleReason(snapshot.Reason)
             : snapshot.Availability switch
             {
                 UsageAvailability.Setup => "未接続 — 通知領域から連携設定を開いてください",
@@ -51,7 +66,15 @@ public static class UsageStatusFormatter
 
     public static string FormatClaudeConnection(UsageSnapshot snapshot) =>
         snapshot.IsStale || snapshot.Availability == UsageAvailability.Stale
-            ? "更新が停止しています。Claude Codeでプロンプトを実行してください。"
+            ? snapshot.Reason switch
+            {
+                "CLAUDE_SIGNED_OUT" => "更新が停止しています。Claude Codeへサインインしてください。",
+                "CLAUDE_NOT_INSTALLED" => "更新が停止しています。Claude Codeが見つかりません。公式CLIをインストールしてください。",
+                "CLAUDE_TRUST_REQUIRED" => "更新が停止しています。連携設定のフォルダー信頼が必要です。Claude Code側でフォルダーを信頼してください。",
+                "RESET_PASSED" => "5時間枠の更新待ちです。自動的に再開します。しばらく待っても再開しない場合はお知らせください。",
+                "CONSOLE_BUFFER_READ_FAILED" => "Claude利用情報の取得経路でエラーが発生しました。アプリ再起動後も続く場合はtroubleshootingを確認してください。",
+                _ => "更新が停止しています。Claude Codeでプロンプトを実行してください。",
+            }
             : snapshot.Availability switch
             {
                 UsageAvailability.Available => "Claude Codeと接続しました。",

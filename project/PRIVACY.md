@@ -7,7 +7,7 @@
 
 Claude Code連携はopt-inです。既定の自動取得では、本アプリが署名済みの公式Claude CLIを監視アプリ専用の空フォルダーで子プロセスとして起動し、`/usage`だけを送ります。公式CLIが既存subscription認証を使ってAnthropicへ接続しますが、本アプリ自身は認証情報や非公開endpointへ触れません。
 
-CLIのaccessibility画面はwindow矩形だけをbounded memoryで読み、既知の5時間・7日間sectionから使用済み割合とreset時刻だけを抽出します。生画面、抽出値、screenshotをログやディスクへ保存しません。cwd、transcript、repository、session ID、prompt、account情報は転送しません。
+CLIのaccessibility画面は、console screen bufferのうち現在のviewport下端から遡る直近最大120行を、列0から最大400列までbounded process memoryで読み、既知の5時間・7日間sectionから使用済み割合とreset時刻だけを抽出します。生画面、抽出値、screenshotをログやディスクへ保存しません。cwd、transcript、repository、session ID、prompt、account情報を外部へ送信しません。
 
 active取得では一時settingsやstatusLine bridgeを作成しません。使用率はディスクへ保存しません。専用作業フォルダーは互換性のため`%LOCALAPPDATA%\CodexUsageMonitor\ClaudeCliWorkspace`を引き続き使用します。Claude Code自身が作るsession stateはAnthropic公式CLIの管理対象であり、本アプリはユーザーの`.claude`配下を削除しません。
 

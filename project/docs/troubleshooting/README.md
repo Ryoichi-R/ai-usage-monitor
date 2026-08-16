@@ -25,6 +25,7 @@
 - `CLAUDE_TRUST_REQUIRED`: 通知領域の「Claude Code連携…」を開き、表示された専用フォルダーで利用者自身が公式CLIのtrustを承認してください。監視アプリは選択を代行しません。
 - `CLAUDE_SIGNED_OUT`: 公式Claude CLIへ先にサインインしてください。
 - `READY_TIMEOUT` / `USAGE_SCREEN_PARSE_FAILED`: offline、managed settings、CLI更新による画面変更を確認し、手動更新を1回試してください。段階描画中のgenericな不完全画面は起動timeout内で再読込します。完成後もparserが5時間枠・週間枠の両方を一意に確認できない場合、値を推測しません。
+- `CONSOLE_BUFFER_READ_FAILED`: consoleへのattach、画面情報取得、または画面読取りが起動timeoutまで継続して失敗しています。アプリを再起動し、改善しない場合はmonitorとClaude CLIのelevation level、endpoint security policy、Claude CLIの更新状況を確認してください。
 - `ATTACH_FAILED` / `SCREEN_READ_FAILED`: monitorとClaude CLIのelevation levelを揃えてください。
 - `PROCESS_START_FAILED`: 実行file、アクセス権、endpoint security policyを確認してください。
 

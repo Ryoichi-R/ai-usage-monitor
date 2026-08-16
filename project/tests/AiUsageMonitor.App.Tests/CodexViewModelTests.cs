@@ -165,7 +165,9 @@ public sealed class CodexViewModelTests
         });
 
         Assert.Empty(usage.Rows);
-        Assert.Equal("更新が停止しています", usage.StatusText);
+        // RESET_PASSEDは5時間枠reset直後の既知の自動回復待ちであり、汎用stale文言ではなく
+        // UsageStatusFormatterのstale reason別messageを表示する。
+        Assert.Equal("5時間枠の更新待ち — 自動再開します", usage.StatusText);
         Assert.Equal("最終取得 14:25", usage.FreshnessText);
         Assert.Equal(UsageSeverity.Danger, usage.FreshnessSeverity);
     }

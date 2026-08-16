@@ -277,6 +277,48 @@ public sealed class ClaudeUsageTests
         Assert.Equal(Now, expired.ReceivedAt);
     }
 
+    [Theory]
+    [InlineData(UsageAvailability.SignedOut, "CLAUDE_SIGNED_OUT")]
+    [InlineData(UsageAvailability.Setup, "CLAUDE_TRUST_REQUIRED")]
+    [InlineData(UsageAvailability.NotInstalled, "CLAUDE_NOT_INSTALLED")]
+    public void ActionableFailureReasonSurvivesStaleTimeout(
+        UsageAvailability availability,
+        string reason)
+    {
+        // 2026-08-15インシデントの根本原因: staleAfter経過後、Currentが理由を機械的に
+        // RECEIVE_TIMEOUTへ丸めていたため、SignedOut等の実行可能な理由が消えていた。
+        var merger = new ClaudeUsageObservationMerger();
+        UsageSnapshot failure = UsageSnapshot.Loading(UsageProvider.Claude, Now) with
+        {
+            Availability = availability,
+            Reason = reason,
+        };
+        merger.Merge(failure);
+
+        UsageSnapshot stale = merger.Current(Now.AddMinutes(11));
+
+        Assert.Equal(UsageAvailability.Stale, stale.Availability);
+        Assert.Equal(reason, stale.Reason);
+        Assert.True(stale.IsStale);
+    }
+
+    [Fact]
+    public void NonActionableFailureReasonBecomesReceiveTimeoutAfterStale()
+    {
+        var merger = new ClaudeUsageObservationMerger();
+        UsageSnapshot failure = UsageSnapshot.Loading(UsageProvider.Claude, Now) with
+        {
+            Availability = UsageAvailability.Unavailable,
+            Reason = "RPC_TIMEOUT",
+        };
+        merger.Merge(failure);
+
+        UsageSnapshot stale = merger.Current(Now.AddMinutes(11));
+
+        Assert.Equal(UsageAvailability.Stale, stale.Availability);
+        Assert.Equal("RECEIVE_TIMEOUT", stale.Reason);
+    }
+
     [Fact]
     public void SignedOutThenUnsupportedDoesNotInventSuccessfulHistory()
     {

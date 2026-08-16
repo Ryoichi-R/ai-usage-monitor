@@ -16,6 +16,8 @@ public static partial class ClaudeCliUsageScreenParser
         string? version) =>
         Parse(lines, observedAt, version, TimeZoneInfo.Local);
 
+    private static readonly string[] SessionAnchors = ["Current session", "現在のセッション"];
+
     public static UsageSnapshot Parse(
         IReadOnlyList<string> lines,
         DateTimeOffset observedAt,
@@ -26,15 +28,21 @@ public static partial class ClaudeCliUsageScreenParser
         if (lines.Count == 0 || lines.Count > ClaudeCliScreenStateMachine.MaximumLines)
             return Failure(observedAt, version);
 
+        // bufferは古いframeから新しいframeの順で並ぶ。最後のCurrent session（各言語版）から
+        // 末尾までのsuffixだけを最新candidateとして切り出し、それより前に残る古いframeの
+        // anchorは一切見ない。以降のanchor一意性判定もこのcandidate内だけで行われるため、
+        // 古いframeとの重複では失敗せず、candidate内の重複・欠落だけをfail-closedにする。
+        IReadOnlyList<string> candidate = ExtractLatestCandidate(lines);
+
         SectionResult session = ParseSection(
-            lines,
-            ["Current session", "現在のセッション"],
+            candidate,
+            SessionAnchors,
             ["Current week (all models)", "今週（すべてのモデル）"],
             observedAt,
             UsageWindowPolicy.FiveHourDurationMinutes,
             localTimeZone);
         SectionResult week = ParseSection(
-            lines,
+            candidate,
             ["Current week (all models)", "今週（すべてのモデル）"],
             ["What's contributing", "利用上限への影響", "Usage credits", "使用クレジット", "使用量クレジット", "Esc to cancel"],
             observedAt,
@@ -139,6 +147,28 @@ public static partial class ClaudeCliUsageScreenParser
         return percentages.Count == 1 && resetCount == 1
             ? new(true, percentages[0], reset, null, null)
             : new(false, 0, null, resetFailureReason, resetDiagnostic);
+    }
+
+    /// <summary>
+    /// bufferの末尾から最後のCurrent session（各言語版）を探し、そこから末尾までのsuffixを返す。
+    /// 見つからない場合は入力をそのまま返し、後続のFindUniqueAnchorで従来どおり失敗させる。
+    /// </summary>
+    private static IReadOnlyList<string> ExtractLatestCandidate(IReadOnlyList<string> lines)
+    {
+        int lastSessionIndex = -1;
+        for (int index = 0; index < lines.Count; index++)
+        {
+            if (SessionAnchors.Any(anchor =>
+                    lines[index].Contains(anchor, StringComparison.OrdinalIgnoreCase)))
+                lastSessionIndex = index;
+        }
+        if (lastSessionIndex < 0) return lines;
+
+        int length = lines.Count - lastSessionIndex;
+        var candidate = new string[length];
+        for (int offset = 0; offset < length; offset++)
+            candidate[offset] = lines[lastSessionIndex + offset];
+        return candidate;
     }
 
     private static int FindUniqueAnchor(IReadOnlyList<string> lines, string[] anchors)

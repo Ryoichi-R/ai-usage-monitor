@@ -357,6 +357,140 @@ public sealed class ClaudeCliUsageScreenParserTests
             StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ParsesSuccessfullyAtTheHelperMaximumHeightBoundary()
+    {
+        // ClaudeConsoleHelper.MaximumHeight(120)ちょうどの行数でも正しくparseできることを
+        // end-to-endで確認する（Parser自体のMaximumLines上限は400で別物）。
+        var lines = new List<string>();
+        for (int index = 0; index < 113; index++)
+            lines.Add(FormattableString.Invariant($"  #. Contributing detail line {index}"));
+        lines.AddRange(
+        [
+            "Current session",
+            "48% used",
+            "Resets 2pm (Asia/Tokyo)",
+            "Current week (all models)",
+            "32% used",
+            "Resets Jul 30, 1pm (Asia/Tokyo)",
+            "What's contributing",
+        ]);
+        Assert.Equal(120, lines.Count);
+
+        UsageSnapshot result = ClaudeCliUsageScreenParser.Parse(lines.ToArray(), ObservedAt, "2.1.218");
+
+        Assert.Equal(UsageAvailability.Available, result.Availability);
+        Assert.Equal([48d, 32d], result.Windows.Select(window => window.UsedPercent));
+    }
+
+    [Fact]
+    public void LatestCompleteFrameIsUsedWhenAnOlderCompleteFrameSharesAnchors()
+    {
+        // screen bufferは古いframeから新しいframeの順に並ぶ。reset通過前の古いframeが
+        // まだbuffer末尾に残っていても、最後のCurrent session以降のsuffixだけを見て、
+        // 最新frameの数値を採用する（古いframeとのanchor重複では失敗しない）。
+        string[] lines =
+        [
+            "Current session",
+            "80% used",
+            "Resets 1pm (Asia/Tokyo)",
+            "Current week (all models)",
+            "60% used",
+            "Resets Jul 30, 1pm (Asia/Tokyo)",
+            "What's contributing",
+            "Current session",
+            "48% used",
+            "Resets 2pm (Asia/Tokyo)",
+            "Current week (all models)",
+            "32% used",
+            "Resets Jul 30, 1pm (Asia/Tokyo)",
+            "What's contributing",
+        ];
+
+        UsageSnapshot result = ClaudeCliUsageScreenParser.Parse(lines, ObservedAt, "2.1.218");
+
+        Assert.Equal(UsageAvailability.Available, result.Availability);
+        Assert.Equal([48d, 32d], result.Windows.Select(window => window.UsedPercent));
+    }
+
+    [Fact]
+    public void IncompleteLatestFrameFailsClosedInsteadOfFallingBackToOlderCompleteFrame()
+    {
+        // 最新frameが描画途中（percentage/resetが揃っていない）の場合、古い完全なframeへ
+        // フォールバックせずfail-closedにする。取得側が再読込するまで古い値を騙って
+        // 返さないため。
+        string[] lines =
+        [
+            "Current session",
+            "80% used",
+            "Resets 1pm (Asia/Tokyo)",
+            "Current week (all models)",
+            "60% used",
+            "Resets Jul 30, 1pm (Asia/Tokyo)",
+            "What's contributing",
+            "Current session",
+            "Current week (all models)",
+        ];
+
+        UsageSnapshot result = ClaudeCliUsageScreenParser.Parse(lines, ObservedAt, "2.1.218");
+
+        Assert.Equal(UsageAvailability.Error, result.Availability);
+        Assert.Equal("USAGE_SCREEN_PARSE_FAILED", result.Reason);
+        Assert.Empty(result.Windows);
+    }
+
+    [Fact]
+    public void ExtraContributingLinesBeforeTheLatestFrameDoNotHideCurrentSessionAnchor()
+    {
+        // /usageのWhat's contributing配下はskill/MCP利用状況で行数が増減し、可視領域を
+        // 圧迫しうる。console helperが直近120行のbufferを返す前提で、Current session
+        // より前に大量のnoise行があってもparseできることを確認する。
+        var lines = new List<string>();
+        for (int index = 0; index < 96; index++)
+            lines.Add(FormattableString.Invariant($"  #. Contributing detail line {index}"));
+        lines.AddRange(
+        [
+            "Current session",
+            "48% used",
+            "Resets 2pm (Asia/Tokyo)",
+            "Current week (all models)",
+            "32% used",
+            "Resets Jul 30, 1pm (Asia/Tokyo)",
+            "What's contributing",
+        ]);
+        Assert.True(lines.Count > 30 && lines.Count <= ClaudeConsoleHelperMaximumHeight);
+
+        UsageSnapshot result = ClaudeCliUsageScreenParser.Parse(lines.ToArray(), ObservedAt, "2.1.218");
+
+        Assert.Equal(UsageAvailability.Available, result.Availability);
+        Assert.Equal([48d, 32d], result.Windows.Select(window => window.UsedPercent));
+    }
+
+    [Fact]
+    public void DuplicateAnchorWithinLatestCandidateFailsClosed()
+    {
+        // candidate（最後のCurrent session以降のsuffix）内部で週間枠anchorが重複した場合は、
+        // 古いframeとの重複とは異なり、fail-closedのままとする。
+        string[] lines =
+        [
+            "Current session",
+            "48% used",
+            "Resets 2pm (Asia/Tokyo)",
+            "Current week (all models)",
+            "32% used",
+            "Current week (all models)",
+            "Resets Jul 30, 1pm (Asia/Tokyo)",
+            "What's contributing",
+        ];
+
+        UsageSnapshot result = ClaudeCliUsageScreenParser.Parse(lines, ObservedAt, "2.1.218");
+
+        Assert.Equal(UsageAvailability.Error, result.Availability);
+        Assert.Equal("USAGE_SCREEN_PARSE_FAILED", result.Reason);
+    }
+
+    private const int ClaudeConsoleHelperMaximumHeight = 120;
+
     private static UsageSnapshot ParseWithSessionReset(
         string reset,
         DateTimeOffset? observedAt = null)
