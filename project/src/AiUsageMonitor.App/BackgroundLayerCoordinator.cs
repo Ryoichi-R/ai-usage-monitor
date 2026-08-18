@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Threading;
 using AiUsageMonitor.Core.Presentation;
@@ -14,25 +15,36 @@ internal sealed class BackgroundLayerCoordinator : IDisposable
     private AppSettings _settings = new AppSettings().Normalized();
     private BackgroundPresentationMode _mode;
     private DispatcherOperation? _syncOperation;
+    private readonly DispatcherTimer _fallbackTimer;
     private bool _disposed;
+    private bool _awaitingPlacement;
 
     internal BackgroundLayerCoordinator(MainWindow mainWindow, Dispatcher dispatcher, Action<string, Exception?>? diagnostic = null)
     {
         _mainWindow = mainWindow ?? throw new ArgumentNullException(nameof(mainWindow));
         _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
         _backgroundWindow = new BackgroundWindow(diagnostic ?? ((_, _) => { }));
+        _fallbackTimer = new DispatcherTimer(
+            TimeSpan.FromSeconds(2),
+            DispatcherPriority.Background,
+            (_, _) => RunPlacementFallback(),
+            _dispatcher);
+        _fallbackTimer.Stop();
         _mainWindow.LocationChanged += OnBoundsChanged;
         _mainWindow.SizeChanged += OnBoundsChanged;
         _mainWindow.DpiChanged += OnDpiChanged;
         _mainWindow.IsVisibleChanged += OnVisibilityChanged;
         _mainWindow.InformationBoundsChanged += OnInformationBoundsChanged;
-        _mainWindow.UserMoveStarted += SyncNow;
-        _mainWindow.UserMoveCompleted += SyncNow;
+        _mainWindow.UserMoveStarted += OnUserMoveStarted;
+        _mainWindow.UserMoveCompleted += OnUserMoveCompleted;
+        _mainWindow.PlacementCompleted += OnPlacementCompleted;
         _mainWindow.Closed += OnMainWindowClosed;
     }
 
     internal BackgroundPresentationMode Mode => _mode;
     internal BackgroundWindow BackgroundWindow => _backgroundWindow;
+    internal bool AwaitingPlacementForTest => _awaitingPlacement;
+    internal void TriggerFallbackForTest() => RunPlacementFallback();
 
     internal void Apply(AppSettings settings)
     {
@@ -48,8 +60,7 @@ internal sealed class BackgroundLayerCoordinator : IDisposable
 
         _mainWindow.SetInlineBackground(_settings, BackgroundPresentationMode.Split);
         _backgroundWindow.ApplyAppearance(_settings);
-        SyncNow();
-        _backgroundWindow.SetPresentationRequested(_mainWindow.IsVisible);
+        BeginAwaitingPlacement();
     }
 
     internal void SetWidgetVisible(bool visible)
@@ -64,8 +75,7 @@ internal sealed class BackgroundLayerCoordinator : IDisposable
         _mainWindow.Show();
         if (_mode == BackgroundPresentationMode.Split)
         {
-            SyncNow();
-            _backgroundWindow.SetPresentationRequested(true);
+            BeginAwaitingPlacement();
         }
     }
 
@@ -80,8 +90,7 @@ internal sealed class BackgroundLayerCoordinator : IDisposable
         ThrowIfDisposed();
         if (_mode == BackgroundPresentationMode.Split && _mainWindow.IsVisible)
         {
-            SyncNow();
-            _backgroundWindow.SetPresentationRequested(true);
+            BeginAwaitingPlacement();
         }
     }
 
@@ -127,10 +136,60 @@ internal sealed class BackgroundLayerCoordinator : IDisposable
         if (_mainWindow.IsVisible)
         {
             _backgroundWindow.ApplyAppearance(_settings);
-            SyncNow();
-            _backgroundWindow.SetPresentationRequested(true);
+            BeginAwaitingPlacement();
         }
-        else _backgroundWindow.SetPresentationRequested(false);
+        else
+        {
+            _awaitingPlacement = false;
+            _fallbackTimer.Stop();
+            _backgroundWindow.SetPresentationRequested(false);
+        }
+    }
+
+    private void OnUserMoveStarted()
+    {
+        if (_mode != BackgroundPresentationMode.Split) return;
+        _awaitingPlacement = true;
+        _backgroundWindow.SetPresentationRequested(false);
+    }
+
+    private void OnUserMoveCompleted() => OnPlacementCompleted();
+
+    private void OnPlacementCompleted()
+    {
+        if (_disposed || _mode != BackgroundPresentationMode.Split || !_mainWindow.IsVisible)
+            return;
+        _awaitingPlacement = false;
+        _fallbackTimer.Stop();
+        SyncNow();
+        _backgroundWindow.SetPresentationRequested(true);
+    }
+
+    private void BeginAwaitingPlacement()
+    {
+        if (_disposed || _mode != BackgroundPresentationMode.Split || !_mainWindow.IsVisible)
+            return;
+        _awaitingPlacement = true;
+        _backgroundWindow.SetPresentationRequested(false);
+        _fallbackTimer.Stop();
+        _fallbackTimer.Start();
+    }
+
+    private void RunPlacementFallback()
+    {
+        _fallbackTimer.Stop();
+        if (_disposed || !_awaitingPlacement || _mode != BackgroundPresentationMode.Split || !_mainWindow.IsVisible)
+            return;
+        Rect bounds = _mainWindow.GetInformationBoundsInScreenDip();
+        DisplayReflowEventSource.Log.BackgroundFallback(
+            0,
+            Stopwatch.GetTimestamp(),
+            _settings.MonitorDeviceName ?? "auto",
+            (int)Math.Round(bounds.Left),
+            (int)Math.Round(bounds.Top),
+            (int)Math.Round(bounds.Width),
+            (int)Math.Round(bounds.Height));
+        OnPlacementCompleted();
     }
 
     private void OnMainWindowClosed(object? sender, EventArgs e) => Dispose();
@@ -146,11 +205,13 @@ internal sealed class BackgroundLayerCoordinator : IDisposable
         _mainWindow.DpiChanged -= OnDpiChanged;
         _mainWindow.IsVisibleChanged -= OnVisibilityChanged;
         _mainWindow.InformationBoundsChanged -= OnInformationBoundsChanged;
-        _mainWindow.UserMoveStarted -= SyncNow;
-        _mainWindow.UserMoveCompleted -= SyncNow;
+        _mainWindow.UserMoveStarted -= OnUserMoveStarted;
+        _mainWindow.UserMoveCompleted -= OnUserMoveCompleted;
+        _mainWindow.PlacementCompleted -= OnPlacementCompleted;
         _mainWindow.Closed -= OnMainWindowClosed;
         if (_syncOperation?.Status == DispatcherOperationStatus.Pending) _syncOperation.Abort();
         _syncOperation = null;
+        _fallbackTimer.Stop();
         _backgroundWindow.Close();
     }
 }

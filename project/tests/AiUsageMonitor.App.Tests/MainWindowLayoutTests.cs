@@ -588,6 +588,29 @@ public sealed class MainWindowLayoutTests
         });
     }
 
+    [Fact]
+    public void LayoutContract_EmitsPlacementCompletionForSplitBackgroundConsumer()
+    {
+        MainWindowScaleTestSupport.RunInSta(() =>
+        {
+            var window = CreateLaidOutWindow(100, out _);
+            try
+            {
+                window.Show();
+                window.DrainPendingPlacementForTest();
+                int completed = 0;
+                window.PlacementCompleted += () => completed++;
+                window.RequestRepositionForTest(fullApply: true);
+                window.DrainPendingPlacementForTest();
+                Assert.Equal(1, completed);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
     private static MainWindow CreateLaidOutWindow(UsageViewModel viewModel, double scalePercent, out Border root)
     {
         var window = new MainWindow { DataContext = viewModel };

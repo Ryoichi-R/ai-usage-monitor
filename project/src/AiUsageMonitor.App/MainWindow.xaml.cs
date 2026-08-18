@@ -9,7 +9,6 @@ using System.Windows.Threading;
 using AiUsageMonitor.Core.Presentation;
 using AiUsageMonitor.Core.Settings;
 using AiUsageMonitor.Windows.Window;
-using Forms = System.Windows.Forms;
 
 namespace AiUsageMonitor.App;
 
@@ -40,11 +39,17 @@ public partial class MainWindow : Window
     private TopmostWindowController? _topmostController;
     private bool _scrollGuidanceShown;
     private int _rootMouseDownCount;
+    private readonly DisplayWorkAreaProvider _displayWorkAreaProvider;
+    private readonly DisplayReflowScheduler _displayReflowScheduler;
+    private HwndSource? _source;
+    private WorkArea _lastKnownWorkArea = new(0, 0, 1920, 1040);
+    private MonitorWorkAreaSnapshot? _lastMonitorSnapshot;
     public AppSettings Settings { get; private set; } = new();
     public event Action? UserPositionChanged;
     internal event Action? InformationBoundsChanged;
     internal event Action? UserMoveStarted;
     internal event Action? UserMoveCompleted;
+    internal event Action? PlacementCompleted;
     public event Action<bool>? TopmostHealthChanged;
     public bool IsTopmostDegraded => _topmostController?.Health.IsDegraded ?? false;
     internal Func<long> TopmostClockForTest { get; set; } = Stopwatch.GetTimestamp;
@@ -54,6 +59,12 @@ public partial class MainWindow : Window
 
     public MainWindow()
     {
+        _displayWorkAreaProvider = new DisplayWorkAreaProvider();
+        _displayReflowScheduler = new DisplayReflowScheduler(
+            Dispatcher,
+            ExecuteDisplayReflow,
+            () => !_isClosing && IsVisible,
+            () => _userDragging);
         InitializeComponent();
         AppearanceHost.AddHandler(
             Mouse.MouseDownEvent,
@@ -73,6 +84,7 @@ public partial class MainWindow : Window
         LocationChanged += (_, _) => UpdateMaximumHeight();
         IsVisibleChanged += (_, e) =>
         {
+            _displayReflowScheduler.SetVisible(e.NewValue is true);
             if (e.NewValue is true)
             {
                 EnsureTopmostControllerEnabled();
@@ -191,6 +203,11 @@ public partial class MainWindow : Window
         nint handle = new WindowInteropHelper(this).Handle;
         if (handle != 0)
         {
+            _source = HwndSource.FromHwnd(handle);
+            _source?.AddHook(WindowProc);
+        }
+        if (handle != 0)
+        {
             _topmostController ??= new TopmostWindowController(handle);
             AttachTopmostController(_topmostController);
             _topmostController.SetEnabled(Settings.AlwaysOnTop);
@@ -206,11 +223,13 @@ public partial class MainWindow : Window
         UpdateMaximumHeight();
         UpdateScrollGuidance();
         RequestReposition(fullApply: false);
+        _displayReflowScheduler.NotifyDpiChanged();
     }
 
     protected override void OnClosing(CancelEventArgs e)
     {
         _isClosing = true;
+        _displayReflowScheduler.Cancel();
         AbortPendingPlacement();
         AbortPendingTopmostRecovery();
         _topmostController?.SetEnabled(false);
@@ -219,6 +238,9 @@ public partial class MainWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        _source?.RemoveHook(WindowProc);
+        _source = null;
+        _displayReflowScheduler.Shutdown();
         if (_topmostController is not null)
         {
             _topmostController.RecoveryRequested -= RequestTopmostRecovery;
@@ -407,44 +429,139 @@ public partial class MainWindow : Window
             if (_isClosing || _userDragging || !IsVisible) return;
             UpdateLayout();
             UpdateAppearanceGeometry();
-            if (!full && Settings.PlacementMode == PlacementMode.Custom) ClampCurrentPosition();
-            else PositionFromSettings();
+            bool positioned = !full && Settings.PlacementMode == PlacementMode.Custom
+                ? ClampCurrentPosition()
+                : PositionFromSettings();
+            if (!positioned) return;
+            if (_lastMonitorSnapshot is { } snapshot)
+            {
+                DisplayReflowEventSource.Log.PlacementConfirmed(
+                    _displayReflowScheduler.ActiveWaveId,
+                    Stopwatch.GetTimestamp(),
+                    _displayReflowScheduler.ActiveWaveIsRetry,
+                    snapshot.DeviceName,
+                    snapshot.WorkingArea.Left,
+                    snapshot.WorkingArea.Top,
+                    snapshot.WorkingArea.Width,
+                    snapshot.WorkingArea.Height);
+            }
+            PlacementCompleted?.Invoke();
         });
     }
 
-    private void PositionFromSettings()
+    private bool ExecuteDisplayReflow()
     {
-        WorkArea area = CurrentWorkArea();
+        if (_isClosing || !IsLoaded || !IsVisible || _userDragging)
+            return false;
+        if (!TryRefreshWorkArea(out _, out MonitorResolutionResult resolution))
+        {
+            DisplayReflowEventSource.Log.Failure(resolution.FailureStage ?? "monitor-resolution");
+            return false;
+        }
+
+        UpdateMaximumHeight();
+        UpdateScrollGuidance();
+        RequestReposition(fullApply: true);
+        return true;
+    }
+
+    private bool PositionFromSettings()
+    {
+        if (!TryRefreshWorkArea(out DisplayWorkArea workArea, out MonitorResolutionResult resolution))
+        {
+            DisplayReflowEventSource.Log.Failure(resolution.FailureStage ?? "monitor-resolution");
+            return false;
+        }
+
         WidgetPlacement placement = WidgetPlacementCalculator.Calculate(
-            area,
+            workArea.LocalDipArea,
             InformationWidthDip(),
             InformationHeightDip(),
             Settings);
-        SetOuterPositionForInformationBounds(placement.Left, placement.Top);
+        (double insetX, double insetY) = InformationInsetsDip();
+        PhysicalWindowPosition position = DisplayWorkAreaProvider.ToPhysicalWindowPosition(
+            workArea.Snapshot,
+            placement.Left,
+            placement.Top,
+            insetX,
+            insetY);
+        return TrySetPhysicalPosition(position, "SetWindowPos-position");
     }
 
-    private void ClampCurrentPosition()
+    private bool ClampCurrentPosition()
     {
-        WorkArea area = CurrentWorkArea();
-        (double informationLeft, double informationTop) = InformationPosition();
-        WidgetPlacement placement = WidgetPlacementCalculator.ClampToArea(
-            area,
+        if (!TryRefreshWorkArea(out DisplayWorkArea workArea, out MonitorResolutionResult resolution))
+        {
+            DisplayReflowEventSource.Log.Failure(resolution.FailureStage ?? "monitor-resolution");
+            return false;
+        }
+
+        nint handle = new WindowInteropHelper(this).Handle;
+        int errorCode = 0;
+        if (handle == 0 || !NativeWindowPositioner.TryGetBounds(handle, out MonitorPixelRect outerBounds, out errorCode))
+        {
+            LogNativePositionFailure("GetWindowRect-clamp", errorCode);
+            return false;
+        }
+
+        (double insetX, double insetY) = InformationInsetsDip();
+        MonitorPixelRect informationBounds = DisplayWorkAreaProvider.GetInformationBounds(
+            workArea.Snapshot,
+            outerBounds,
+            insetX,
+            insetY,
             InformationWidthDip(),
-            InformationHeightDip(),
-            informationLeft,
-            informationTop);
-        SetOuterPositionForInformationBounds(placement.Left, placement.Top);
+            InformationHeightDip());
+        MonitorPixelRect clamped = DisplayWorkAreaProvider.ClampInformationBounds(
+            workArea.Snapshot,
+            informationBounds);
+        var position = new PhysicalWindowPosition(
+            clamped.Left - DisplayWorkAreaProvider.DipToPixel(insetX, workArea.Snapshot.DpiX),
+            clamped.Top - DisplayWorkAreaProvider.DipToPixel(insetY, workArea.Snapshot.DpiY));
+        return TrySetPhysicalPosition(position, "SetWindowPos-clamp");
     }
 
     private WorkArea CurrentWorkArea()
     {
-        Forms.Screen screen = FindScreen(Settings.MonitorDeviceName);
-        DpiScale dpi = VisualTreeHelper.GetDpi(this);
-        return new WorkArea(
-            screen.WorkingArea.Left / dpi.DpiScaleX,
-            screen.WorkingArea.Top / dpi.DpiScaleY,
-            screen.WorkingArea.Width / dpi.DpiScaleX,
-            screen.WorkingArea.Height / dpi.DpiScaleY);
+        return TryRefreshWorkArea(out DisplayWorkArea workArea, out _)
+            ? workArea.LocalDipArea
+            : _lastKnownWorkArea;
+    }
+
+    private bool TryRefreshWorkArea(
+        out DisplayWorkArea workArea,
+        out MonitorResolutionResult resolution,
+        bool forDrag = false)
+    {
+        nint handle = new WindowInteropHelper(this).Handle;
+        (int X, int Y) center;
+        if (handle != 0 && NativeWindowPositioner.TryGetBounds(handle, out MonitorPixelRect bounds, out _))
+        {
+            center = (
+                bounds.Left + (bounds.Width / 2),
+                bounds.Top + (bounds.Height / 2));
+        }
+        else
+        {
+            DpiScale dpi = VisualTreeHelper.GetDpi(this);
+            center = (
+                (int)Math.Round((Left + (ActualWidth / 2d)) * dpi.DpiScaleX),
+                (int)Math.Round((Top + (ActualHeight / 2d)) * dpi.DpiScaleY));
+        }
+        bool success = forDrag
+            ? _displayWorkAreaProvider.TryGetForDrag(handle, center, out workArea, out resolution)
+            : _displayWorkAreaProvider.TryGetCurrent(
+                Settings.MonitorDeviceName,
+                handle,
+                center,
+                out workArea,
+                out resolution);
+        if (success)
+        {
+            _lastKnownWorkArea = workArea.LocalDipArea;
+            _lastMonitorSnapshot = workArea.Snapshot;
+        }
+        return success;
     }
 
     private void UpdateMaximumHeight()
@@ -458,20 +575,40 @@ public partial class MainWindow : Window
 
     public AppSettings CaptureCustomPosition()
     {
-        DpiScale dpi = VisualTreeHelper.GetDpi(this);
-        Forms.Screen screen = Forms.Screen.FromPoint(new System.Drawing.Point((int)((Left + (ActualWidth / 2)) * dpi.DpiScaleX), (int)((Top + (ActualHeight / 2)) * dpi.DpiScaleY)));
-        System.Windows.Rect area = new(screen.WorkingArea.Left / dpi.DpiScaleX, screen.WorkingArea.Top / dpi.DpiScaleY, screen.WorkingArea.Width / dpi.DpiScaleX, screen.WorkingArea.Height / dpi.DpiScaleY);
-        (double informationLeft, double informationTop) = InformationPosition();
-        double informationWidth = InformationWidthDip();
-        double informationHeight = InformationHeightDip();
-        double left = Math.Max(0, area.Width - informationWidth) == 0 ? 0 : (informationLeft - area.Left) / (area.Width - informationWidth);
-        double top = Math.Max(0, area.Height - informationHeight) == 0 ? 0 : (informationTop - area.Top) / (area.Height - informationHeight);
-        return Settings with { MonitorDeviceName = screen.DeviceName, PlacementMode = PlacementMode.Custom, CustomLeftFraction = Math.Clamp(left, 0, 1), CustomTopFraction = Math.Clamp(top, 0, 1) };
+        if (!TryRefreshWorkArea(out DisplayWorkArea workArea, out _, forDrag: true)) return Settings;
+        nint handle = new WindowInteropHelper(this).Handle;
+        if (handle == 0 || !NativeWindowPositioner.TryGetBounds(handle, out MonitorPixelRect outerBounds, out _))
+            return Settings;
+        (double insetX, double insetY) = InformationInsetsDip();
+        MonitorPixelRect informationPixels = DisplayWorkAreaProvider.GetInformationBounds(
+            workArea.Snapshot,
+            outerBounds,
+            insetX,
+            insetY,
+            InformationWidthDip(),
+            InformationHeightDip());
+        if (!DisplayWorkAreaProvider.TryCaptureCustomPosition(
+                workArea.Snapshot,
+                informationPixels,
+                out CapturedDisplayPosition captured))
+            return Settings;
+        return Settings with
+        {
+            MonitorDeviceName = captured.DeviceName,
+            PlacementMode = PlacementMode.Custom,
+            CustomLeftFraction = captured.LeftFraction,
+            CustomTopFraction = captured.TopFraction,
+        };
     }
 
     private double InformationWidthDip() => CurrentBaseWidgetWidthDip * (Settings.UiScalePercent / 100d);
 
     private double InformationHeightDip() => Root.ActualHeight > 0 ? Root.ActualHeight : ActualHeight;
+
+    private (double X, double Y) InformationInsetsDip() =>
+        (
+            Math.Max(0, (ActualWidth - InformationWidthDip()) / 2d),
+            Math.Max(0, (ActualHeight - InformationHeightDip()) / 2d));
 
     private (double Left, double Top) InformationPosition()
     {
@@ -480,11 +617,28 @@ public partial class MainWindow : Window
         return (Left + offsetX, Top + offsetY);
     }
 
-    private void SetOuterPositionForInformationBounds(double informationLeft, double informationTop)
+    private bool TrySetPhysicalPosition(PhysicalWindowPosition position, string failureStage)
     {
-        Left = informationLeft - Math.Max(0, (ActualWidth - InformationWidthDip()) / 2d);
-        Top = informationTop - Math.Max(0, (ActualHeight - InformationHeightDip()) / 2d);
+        nint handle = new WindowInteropHelper(this).Handle;
+        int errorCode = 0;
+        if (handle != 0 && NativeWindowPositioner.TrySetPosition(
+                handle,
+                position.Left,
+                position.Top,
+                out errorCode))
+            return true;
+
+        LogNativePositionFailure(failureStage, errorCode);
+        return false;
     }
+
+    private void LogNativePositionFailure(string stage, int errorCode) =>
+        DisplayReflowEventSource.Log.InteropFailure(
+            _displayReflowScheduler.ActiveWaveId,
+            Stopwatch.GetTimestamp(),
+            _displayReflowScheduler.ActiveWaveIsRetry,
+            stage,
+            errorCode == 0 ? 0 : unchecked((int)(0x80070000u | (uint)errorCode)));
 
     private void ApplyClickThrough()
     {
@@ -492,8 +646,6 @@ public partial class MainWindow : Window
         if (handle != 0) ClickThroughHelper.Apply(handle, Settings.ClickThrough);
         UpdateScrollGuidance();
     }
-
-    private static Forms.Screen FindScreen(string? deviceName) => Forms.Screen.AllScreens.FirstOrDefault(screen => string.Equals(screen.DeviceName, deviceName, StringComparison.OrdinalIgnoreCase)) ?? Forms.Screen.PrimaryScreen ?? Forms.Screen.AllScreens[0];
 
     private void OnRootMouseDown(object sender, MouseButtonEventArgs e)
     {
@@ -503,6 +655,7 @@ public partial class MainWindow : Window
         if (!Settings.ClickThrough && e.ButtonState == MouseButtonState.Pressed)
         {
             _userDragging = true;
+            _displayReflowScheduler.SetDragging(true);
             UserMoveStarted?.Invoke();
             // ドラッグ開始前に積まれていた配置予約を破棄する。実行済みならコールバック側の再判定で弾く。
             AbortPendingPlacement();
@@ -550,6 +703,7 @@ public partial class MainWindow : Window
         Settings = CaptureCustomPosition();
         UserMoveCompleted?.Invoke();
         UserPositionChanged?.Invoke();
+        _displayReflowScheduler.SetDragging(false);
     }
 
     internal void SetInlineBackground(AppSettings settings, BackgroundPresentationMode mode)
@@ -582,6 +736,8 @@ public partial class MainWindow : Window
     internal bool? TopmostRecoveryVisibilityOverrideForTest { get; set; }
 
     internal void RequestRepositionForTest(bool fullApply) => RequestReposition(fullApply);
+    internal void NotifyDisplayChangeForTest() => _displayReflowScheduler.NotifyDisplayChange();
+    internal bool HasPendingDisplayReflowForTest => _displayReflowScheduler.HasPendingWork;
     internal void RepositionAfterContentChange()
     {
         UpdateMaximumHeight();
@@ -613,4 +769,11 @@ public partial class MainWindow : Window
 
     // ドラッグ開始時に本番が行う「保留予約の破棄」だけを切り出したもの。DragMoveのモーダルループは実行できないため。
     internal void SimulateDragAbortPendingPlacement() => AbortPendingPlacement();
+
+    private nint WindowProc(nint hwnd, int message, nint wParam, nint lParam, ref bool handled)
+    {
+        if (DisplayReflowMessageFilter.IsDisplayOrWorkAreaChange(message, wParam))
+            _displayReflowScheduler.NotifyDisplayChange();
+        return 0;
+    }
 }

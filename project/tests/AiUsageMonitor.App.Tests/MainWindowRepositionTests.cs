@@ -290,6 +290,47 @@ public sealed class MainWindowRepositionTests
         });
     }
 
+    [Fact]
+    public void DisplayChangeWave_IsPendingAndCanceledWhenWindowCloses()
+    {
+        MainWindowScaleTestSupport.RunInSta(() =>
+        {
+            var window = ShowWindow(out _);
+            try
+            {
+                window.NotifyDisplayChangeForTest();
+                Assert.True(window.HasPendingDisplayReflowForTest);
+                window.Close();
+                Assert.False(window.HasPendingDisplayReflowForTest);
+            }
+            finally
+            {
+                if (window.IsVisible) window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void FullApply_RaisesPlacementCompletedAfterPositionIsSet()
+    {
+        MainWindowScaleTestSupport.RunInSta(() =>
+        {
+            var window = ShowWindow(out _);
+            try
+            {
+                int completed = 0;
+                window.PlacementCompleted += () => completed++;
+                window.RequestRepositionForTest(fullApply: true);
+                Drain(window);
+                Assert.Equal(1, completed);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
     private static MainWindow ShowWindow(out MainWindow created)
     {
         var window = new MainWindow { DataContext = MainWindowScaleTestSupport.CreateMaxDisplayViewModel() };
