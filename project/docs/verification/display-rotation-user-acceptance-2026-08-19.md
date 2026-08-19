@@ -48,3 +48,31 @@
 - この再確認では、横→縦の表示再配置で不合格を確認した時点で中止し、横向きへ復元した。
 - 縦向き再起動、Standard／Compact、Custom／Preset、background各mode、EventSource trace、working area／information boundsの数値採取は実施していない。
 - 全画面キャプチャは画面上で確認したが、公開候補へ画像ファイルは追加していない。
+
+## 最終candidateの実機再確認（合格）
+
+### Candidate binding
+
+- Repository commit: `7972748a462bc291f320fc65f7c5a6095c60c017`
+- EXE file name: `AiUsageMonitor.App.exe`（ローカルの一時出力先は公開記録へ含めない）
+- ProductVersion: `0.1.0+7972748a462bc291f320fc65f7c5a6095c60c017`
+- SHA-256: `7A6D088B834B4514080AE522A149295E868CCE0FFEA4DC9194AC94E5787FEF6D`
+- 上記candidateだけが実行中であることを、実行プロセスの絶対パスで確認した。
+
+### 実機条件と結果
+
+- 実施日: 2026-08-19（Asia/Tokyo）
+- 端末表示: Surface Pro 12-inch 1st Edition with Snapdragon
+- 表示倍率: 175%
+- 横向き: 2196 x 1464（推奨）
+- 縦向き: 1464 x 2196（推奨）
+- 横向きから縦向きへ回転し、5秒待機後に確認した。
+- 縦向き結果: **合格**。ウィジェットの右端を含むCPU、MEM、NET、BAT、CODEX、CLAUDEのラベル、値、reset表示が画面内に収まることを高解像度の全画面キャプチャで確認した。
+- 数値確認: candidateの実HWNDは物理pixelで `1267,1879,1464,2177`、working areaは `0,0,1464,2196`、DPIは168で、全辺がworking area内に収まった（`inside=True`）。
+- 復元確認: candidateを終了し、2196 x 1464、横向き、回転ロックオフへ復元した。既存インストール版が元のパスから単独で起動していることも確認した。
+
+### 適用境界
+
+- 合格判定は上記 `7972748a462bc291f320fc65f7c5a6095c60c017` candidateにだけ適用する。先行する不合格candidateは受入済みとして扱わない。
+- 全画面キャプチャはローカル検証証跡として保持し、公開候補へ画像ファイルは追加していない。
+- 今回の再確認範囲は横向きから縦向きへの再配置である。縦向き再起動、全表示modeの組合せ、EventSource traceは追加実施していない。
