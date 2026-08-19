@@ -311,6 +311,26 @@ public sealed class MainWindowRepositionTests
     }
 
     [Fact]
+    public void SystemDisplaySettingsChanged_QueuesTheSameReflowScheduler()
+    {
+        MainWindowScaleTestSupport.RunInSta(() =>
+        {
+            var window = ShowWindow(out _);
+            try
+            {
+                window.NotifySystemDisplaySettingsChangedForTest();
+                window.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
+
+                Assert.True(window.HasPendingDisplayReflowForTest);
+            }
+            finally
+            {
+                if (window.IsVisible) window.Close();
+            }
+        });
+    }
+
+    [Fact]
     public void FullApply_RaisesPlacementCompletedAfterPositionIsSet()
     {
         MainWindowScaleTestSupport.RunInSta(() =>

@@ -42,6 +42,36 @@ public sealed class DisplayReflowSchedulerTests
         timers.Fire(DisplayReflowScheduler.DisplayDebounceMilliseconds);
 
         Assert.Equal(1, executions);
+        Assert.True(scheduler.HasPendingWork);
+
+        timers.Fire(DisplayReflowScheduler.DisplayDebounceMilliseconds);
+        Assert.True(scheduler.ActiveWaveIsRetry);
+        timers.Fire(DisplayReflowScheduler.DisplayDebounceMilliseconds);
+
+        Assert.Equal(2, executions);
+        Assert.False(scheduler.HasPendingWork);
+    }
+
+    [Fact]
+    public void SuccessfulNormalWaveStartsOneSettleRetryWave()
+    {
+        int executions = 0;
+        var timers = new FakeTimerFactory();
+        var scheduler = CreateScheduler(timers, () => { executions++; return true; });
+
+        scheduler.NotifyDisplayChange();
+        timers.Fire(DisplayReflowScheduler.DisplayDebounceMilliseconds);
+
+        Assert.Equal(1, executions);
+        Assert.Contains(
+            timers.RunningTimers,
+            timer => timer.IntervalMilliseconds == DisplayReflowScheduler.DisplayDebounceMilliseconds);
+
+        timers.Fire(DisplayReflowScheduler.DisplayDebounceMilliseconds);
+        Assert.True(scheduler.ActiveWaveIsRetry);
+        timers.Fire(DisplayReflowScheduler.DisplayDebounceMilliseconds);
+
+        Assert.Equal(2, executions);
         Assert.False(scheduler.HasPendingWork);
     }
 

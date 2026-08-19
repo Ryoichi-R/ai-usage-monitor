@@ -6,6 +6,31 @@ namespace AiUsageMonitor.App.Tests;
 public sealed class DisplayWorkAreaProviderTests
 {
     [Fact]
+    public void HasTopologyChanged_DetectsPortraitRotation()
+    {
+        var landscape = new MonitorWorkAreaSnapshot(
+            new nint(1), @"\\.\DISPLAY1", new MonitorPixelRect(0, 0, 2196, 1464), 168, 168);
+        var portrait = landscape with { WorkingArea = new MonitorPixelRect(0, 0, 1464, 2196) };
+
+        Assert.False(DisplayWorkAreaProvider.HasTopologyChanged(null, landscape));
+        Assert.False(DisplayWorkAreaProvider.HasTopologyChanged(landscape, landscape));
+        Assert.True(DisplayWorkAreaProvider.HasTopologyChanged(landscape, portrait));
+    }
+
+    [Fact]
+    public void WindowBounds_DetectAndClampPhysicalOverflow()
+    {
+        var snapshot = new MonitorWorkAreaSnapshot(
+            new nint(1), @"\\.\DISPLAY1", new MonitorPixelRect(0, 0, 1464, 2196), 168, 168);
+        var overflow = new MonitorPixelRect(1293, 1879, 1490, 2177);
+
+        Assert.True(DisplayWorkAreaProvider.IsOutsideWorkArea(snapshot, overflow));
+        Assert.Equal(
+            new MonitorPixelRect(1267, 1879, 1464, 2177),
+            DisplayWorkAreaProvider.ClampWindowBounds(snapshot, overflow));
+    }
+
+    [Fact]
     public void CaptureUsesPhysicalPixelCoordinatesForMixedDpi()
     {
         var snapshot = new MonitorWorkAreaSnapshot(
@@ -89,6 +114,34 @@ public sealed class DisplayWorkAreaProviderTests
 
         Assert.Equal(new MonitorPixelRect(-1690, 855, -1490, 1005), information);
         Assert.Equal(new MonitorPixelRect(-1600, 750, -1400, 900), clamped);
+    }
+
+    [Fact]
+    public void ActualPortraitWindowOverflowIsPulledInsideAfterPresetPlacement()
+    {
+        var snapshot = new MonitorWorkAreaSnapshot(
+            new nint(1),
+            "DISPLAY1",
+            new MonitorPixelRect(0, 0, 1464, 2196),
+            168,
+            168);
+        var actualOuter = new MonitorPixelRect(1293, 1879, 1490, 2177);
+
+        MonitorPixelRect information = DisplayWorkAreaProvider.GetInformationBounds(
+            snapshot,
+            actualOuter,
+            informationInsetXDip: 6,
+            informationInsetYDip: 0,
+            informationWidthDip: 100,
+            informationHeightDip: 170);
+        MonitorPixelRect clamped = DisplayWorkAreaProvider.ClampInformationBounds(snapshot, information);
+        var correctedOuter = new PhysicalWindowPosition(
+            clamped.Left - DisplayWorkAreaProvider.DipToPixel(6, snapshot.DpiX),
+            clamped.Top);
+
+        Assert.Equal(1479, information.Right);
+        Assert.Equal(1464, clamped.Right);
+        Assert.Equal(1278, correctedOuter.Left);
     }
 
     private sealed class FakeMonitorNativeApi : IMonitorNativeApi

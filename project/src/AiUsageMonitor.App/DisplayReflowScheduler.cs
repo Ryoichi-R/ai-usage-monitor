@@ -193,12 +193,24 @@ internal sealed class DisplayReflowScheduler
 
         DisplayReflowEventSource.Log.Placement(
             _activeWaveId, _clock(), retry, succeeded ? "requested" : "failed");
-        if (!succeeded && !retry && !_retryBudgetUsed)
+        // Windowsの回転確定直後は、最初の再配置要求が成功しても
+        // GetMonitorInfoのworking areaが変更前の矩形を返すことがある。
+        // 成否にかかわらず通常waveの後に1回だけsettle waveを実行し、
+        // OS側の表示状態が安定した後の矩形で再配置を確定する。
+        if (!retry && !_retryBudgetUsed)
         {
             _retryBudgetUsed = true;
             RestartTimer(ref _retryStartTimer, DisplayDebounceMilliseconds, OnRetryStartTimer);
-            DisplayReflowEventSource.Log.InteropFailure(
-                _activeWaveId, _clock(), false, "retry-scheduled", 0);
+            if (succeeded)
+            {
+                DisplayReflowEventSource.Log.Placement(
+                    _activeWaveId, _clock(), false, "settle-retry-scheduled");
+            }
+            else
+            {
+                DisplayReflowEventSource.Log.InteropFailure(
+                    _activeWaveId, _clock(), false, "retry-scheduled", 0);
+            }
         }
     }
 

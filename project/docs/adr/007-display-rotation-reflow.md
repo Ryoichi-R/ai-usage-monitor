@@ -5,9 +5,9 @@
 
 ## Decision
 
-MainWindowのHWND message hookで `WM_DISPLAYCHANGE` と `SPI_SETWORKAREA` を受け、DPI変更を含めて `DisplayReflowScheduler` のwaveへ集約する。通常waveは750msのtrailing edgeと開始から2秒のdeadlineを持つ。interop失敗後のretryは750ms後に新しいwave IDで開始し、そのretry wave自身が別の2秒deadlineを持つ。
+MainWindowのHWND message hookで `WM_DISPLAYCHANGE` と `SPI_SETWORKAREA` を受ける。加えて、HWND hookへ通知されない端末・回転経路を補うため `SystemEvents.DisplaySettingsChanged` を購読し、UI Dispatcherへ戻して同じ `DisplayReflowScheduler` のwaveへ集約する。重複通知はschedulerのdebounceで統合する。通常waveは750msのtrailing edgeと開始から2秒のdeadlineを持つ。回転確定直後は最初のworking area取得が変更前の矩形を返してもinterop上は成功になるため、通常waveの成否にかかわらず750ms後に1回だけsettle retryを新しいwave IDで開始する。retry wave自身は別の2秒deadlineを持ち、連鎖retryは行わない。
 
-Win32層は `EnumDisplayMonitors`／`GetMonitorInfo`／`GetScaleFactorForMonitor` を用いてdevice名、物理pixelのworking area、対象monitorのscale factorを返し、scale factorからeffective DPIを算出する。通常の再配置は保存deviceを優先し、ドラッグ完了時は保存deviceを再利用せず、実HWNDの物理pixel矩形中心を `MonitorFromPoint` へ渡してmonitorを選択する。App層は対象monitor原点を `(0,0)` とするlocal DIPでCore配置計算を行い、相対量だけを対象DPIで物理pixelへ変換した後、monitorの物理pixel原点を加えて `SetWindowPos` する。仮想desktopの絶対pixel座標をDPIで単純除算しない。
+Win32層は `EnumDisplayMonitors`／`GetMonitorInfo`／`GetScaleFactorForMonitor` を用いてdevice名、物理pixelのworking area、対象monitorのscale factorを返し、scale factorからeffective DPIを算出する。通常の再配置は保存deviceを優先し、ドラッグ完了時は保存deviceを再利用せず、実HWNDの物理pixel矩形中心を `MonitorFromPoint` へ渡してmonitorを選択する。App層は対象monitor原点を `(0,0)` とするlocal DIPでCore配置計算を行い、相対量だけを対象DPIで物理pixelへ変換した後、monitorの物理pixel原点を加えて `SetWindowPos` する。さらにpreset/customの初期配置後は実HWND矩形を再取得し、情報領域を物理pixelでworking area内へ最終clampする。仮想desktopの絶対pixel座標をDPIで単純除算しない。
 
 EventSourceは既定では無効でファイルを作らず、明示的なtrace sessionでのみ、monotonic timestamp、wave ID、retry属性、timer種別、device名、矩形、HRESULT／失敗stageを記録する。設定値、fraction、ユーザーパス、取得内容はpayloadに含めない。
 
@@ -17,4 +17,4 @@ EventSourceは既定では無効でファイルを作らず、明示的なtrace 
 
 ## Verification boundary
 
-fake timer factoryで750ms、2秒deadline、後着wave、retry wave、drag defer、hidden/cancel、shutdown後callbackなしをsleepなしで検証する。monitor resolverはsaved-device、drag中心点、device消失fallback、DPI failureをfake native seamで検証する。Surface実機の横→縦→横、縦向き再起動、175% DPI、各background modeは自動テストで代替せず、候補EXEを用いた手動受入として別記録する。
+fake timer factoryで750ms、2秒deadline、後着wave、成功後settle retry、失敗後retry、drag defer、hidden/cancel、shutdown後callbackなしをsleepなしで検証する。monitor resolverはsaved-device、drag中心点、device消失fallback、DPI failureをfake native seamで検証する。Surface実機の横→縦→横、縦向き再起動、175% DPI、各background modeは自動テストで代替せず、候補EXEを用いた手動受入として別記録する。

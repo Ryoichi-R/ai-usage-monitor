@@ -137,6 +137,28 @@ internal sealed class DisplayWorkAreaProvider
     internal static int DipToPixel(double value, uint dpi) =>
         (int)Math.Round(value * dpi / 96d, MidpointRounding.AwayFromZero);
 
+    internal static bool HasTopologyChanged(
+        MonitorWorkAreaSnapshot? previous,
+        MonitorWorkAreaSnapshot current) =>
+        previous is { } snapshot &&
+        (!string.Equals(snapshot.DeviceName, current.DeviceName, StringComparison.OrdinalIgnoreCase) ||
+         snapshot.WorkingArea != current.WorkingArea ||
+         snapshot.DpiX != current.DpiX ||
+         snapshot.DpiY != current.DpiY);
+
+    internal static bool IsOutsideWorkArea(
+        MonitorWorkAreaSnapshot snapshot,
+        MonitorPixelRect windowBounds) =>
+        windowBounds.Left < snapshot.WorkingArea.Left ||
+        windowBounds.Top < snapshot.WorkingArea.Top ||
+        windowBounds.Right > snapshot.WorkingArea.Right ||
+        windowBounds.Bottom > snapshot.WorkingArea.Bottom;
+
+    internal static MonitorPixelRect ClampWindowBounds(
+        MonitorWorkAreaSnapshot snapshot,
+        MonitorPixelRect windowBounds) =>
+        ClampInformationBounds(snapshot, windowBounds);
+
     private static double PixelsToDip(int value, uint dpi) => value * 96d / dpi;
 
     private static WorkArea ToLocalDipWorkArea(MonitorWorkAreaSnapshot snapshot) => new(

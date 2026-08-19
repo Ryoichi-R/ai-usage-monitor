@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows;
@@ -9,9 +10,11 @@ using System.Windows.Threading;
 using AiUsageMonitor.Core.Presentation;
 using AiUsageMonitor.Core.Settings;
 using AiUsageMonitor.Windows.Window;
+using Microsoft.Win32;
 
 namespace AiUsageMonitor.App;
 
+[SuppressMessage("Design", "CA1001:Types that own disposable fields should be disposable", Justification = "WPF Window disposes the polling timer in OnClosing.")]
 public partial class MainWindow : Window
 {
     /// <summary>倍率100%時の標準表示の基準論理幅（DIP）。</summary>
@@ -30,6 +33,9 @@ public partial class MainWindow : Window
     private bool _pendingFullApply;
     private DispatcherOperation? _pendingTopmostRecovery;
     private DispatcherTimer? _topmostRecoveryTimer;
+    private System.Threading.Timer? _displayTopologyPollTimer;
+    private int _displayTopologyPollQueued;
+    private MonitorWorkAreaSnapshot? _lastPolledMonitorSnapshot;
     private long _pendingTopmostRequestedTimestamp;
     private bool _hasPendingTopmostRequest;
     private long _lastTopmostNativeStartTimestamp;
@@ -42,6 +48,7 @@ public partial class MainWindow : Window
     private readonly DisplayWorkAreaProvider _displayWorkAreaProvider;
     private readonly DisplayReflowScheduler _displayReflowScheduler;
     private HwndSource? _source;
+    private bool _systemDisplayEventsSubscribed;
     private WorkArea _lastKnownWorkArea = new(0, 0, 1920, 1040);
     private MonitorWorkAreaSnapshot? _lastMonitorSnapshot;
     public AppSettings Settings { get; private set; } = new();
@@ -206,6 +213,12 @@ public partial class MainWindow : Window
             _source = HwndSource.FromHwnd(handle);
             _source?.AddHook(WindowProc);
         }
+        if (!_systemDisplayEventsSubscribed)
+        {
+            SystemEvents.DisplaySettingsChanged += OnSystemDisplaySettingsChanged;
+            _systemDisplayEventsSubscribed = true;
+        }
+        StartDisplayTopologyPolling();
         if (handle != 0)
         {
             _topmostController ??= new TopmostWindowController(handle);
@@ -229,6 +242,7 @@ public partial class MainWindow : Window
     protected override void OnClosing(CancelEventArgs e)
     {
         _isClosing = true;
+        StopDisplayTopologyPolling();
         _displayReflowScheduler.Cancel();
         AbortPendingPlacement();
         AbortPendingTopmostRecovery();
@@ -238,6 +252,11 @@ public partial class MainWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        if (_systemDisplayEventsSubscribed)
+        {
+            SystemEvents.DisplaySettingsChanged -= OnSystemDisplaySettingsChanged;
+            _systemDisplayEventsSubscribed = false;
+        }
         _source?.RemoveHook(WindowProc);
         _source = null;
         _displayReflowScheduler.Shutdown();
@@ -485,7 +504,13 @@ public partial class MainWindow : Window
             placement.Top,
             insetX,
             insetY);
-        return TrySetPhysicalPosition(position, "SetWindowPos-position");
+        if (!TrySetPhysicalPosition(position, "SetWindowPos-position"))
+            return false;
+
+        // LayoutTransform、透明edge fade、native DPI丸めにより、予測した情報領域と
+        // SetWindowPos後の実HWND矩形には差が生じうる。回転後の狭い辺ではその差が
+        // 画面外へのはみ出しになるため、実矩形を読み直して物理pixelで最終clampする。
+        return ClampCurrentPosition();
     }
 
     private bool ClampCurrentPosition()
@@ -504,20 +529,10 @@ public partial class MainWindow : Window
             return false;
         }
 
-        (double insetX, double insetY) = InformationInsetsDip();
-        MonitorPixelRect informationBounds = DisplayWorkAreaProvider.GetInformationBounds(
+        MonitorPixelRect clamped = DisplayWorkAreaProvider.ClampWindowBounds(
             workArea.Snapshot,
-            outerBounds,
-            insetX,
-            insetY,
-            InformationWidthDip(),
-            InformationHeightDip());
-        MonitorPixelRect clamped = DisplayWorkAreaProvider.ClampInformationBounds(
-            workArea.Snapshot,
-            informationBounds);
-        var position = new PhysicalWindowPosition(
-            clamped.Left - DisplayWorkAreaProvider.DipToPixel(insetX, workArea.Snapshot.DpiX),
-            clamped.Top - DisplayWorkAreaProvider.DipToPixel(insetY, workArea.Snapshot.DpiY));
+            outerBounds);
+        var position = new PhysicalWindowPosition(clamped.Left, clamped.Top);
         return TrySetPhysicalPosition(position, "SetWindowPos-clamp");
     }
 
@@ -775,5 +790,71 @@ public partial class MainWindow : Window
         if (DisplayReflowMessageFilter.IsDisplayOrWorkAreaChange(message, wParam))
             _displayReflowScheduler.NotifyDisplayChange();
         return 0;
+    }
+
+    private void OnSystemDisplaySettingsChanged(object? sender, EventArgs e)
+    {
+        if (_isClosing) return;
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+        {
+            if (!_isClosing)
+                _displayReflowScheduler.NotifyDisplayChange();
+        });
+    }
+
+    internal void NotifySystemDisplaySettingsChangedForTest() =>
+        OnSystemDisplaySettingsChanged(null, EventArgs.Empty);
+
+    private void StartDisplayTopologyPolling()
+    {
+        if (_displayTopologyPollTimer is not null) return;
+        _displayTopologyPollTimer = new System.Threading.Timer(
+            _ => QueueDisplayTopologyPoll(),
+            null,
+            TimeSpan.FromSeconds(1),
+            TimeSpan.FromSeconds(1));
+    }
+
+    private void StopDisplayTopologyPolling()
+    {
+        Interlocked.Exchange(ref _displayTopologyPollTimer, null)?.Dispose();
+        _lastPolledMonitorSnapshot = null;
+    }
+
+    private void QueueDisplayTopologyPoll()
+    {
+        if (Interlocked.Exchange(ref _displayTopologyPollQueued, 1) != 0) return;
+        try
+        {
+            Dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+            {
+                try
+                {
+                    OnDisplayTopologyPoll();
+                }
+                finally
+                {
+                    Volatile.Write(ref _displayTopologyPollQueued, 0);
+                }
+            });
+        }
+        catch
+        {
+            Volatile.Write(ref _displayTopologyPollQueued, 0);
+        }
+    }
+
+    private void OnDisplayTopologyPoll()
+    {
+        if (_displayTopologyPollTimer is null || _isClosing || !IsVisible || _userDragging) return;
+        MonitorWorkAreaSnapshot? previous = _lastPolledMonitorSnapshot;
+        if (!TryRefreshWorkArea(out DisplayWorkArea current, out _)) return;
+        _lastPolledMonitorSnapshot = current.Snapshot;
+        nint handle = new WindowInteropHelper(this).Handle;
+        bool outside = handle != 0 &&
+            NativeWindowPositioner.TryGetBounds(handle, out MonitorPixelRect bounds, out _) &&
+            DisplayWorkAreaProvider.IsOutsideWorkArea(current.Snapshot, bounds);
+        if (outside || DisplayWorkAreaProvider.HasTopologyChanged(previous, current.Snapshot))
+            RequestReposition(fullApply: true);
     }
 }
