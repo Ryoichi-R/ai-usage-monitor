@@ -2,7 +2,7 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Threading;
 using AiUsageMonitor.Core.Settings;
-using AiUsageMonitor.Windows.Window;
+using AiUsageMonitor.Platform.Windows.Window;
 
 namespace AiUsageMonitor.App;
 

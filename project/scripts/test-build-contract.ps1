@@ -279,11 +279,66 @@ try {
     $hiddenConsoleSource = Get-Content -LiteralPath (Join-Path $sourceRoot 'AiUsageMonitor.Claude.Windows\Console\HiddenConsoleSession.cs') -Raw
     $legacyJobSource = Get-Content -LiteralPath (Join-Path $sourceRoot 'AiUsageMonitor.Claude.Windows\Process\ProcessJobObject.cs') -Raw
     Assert-Contract (
-        $hiddenConsoleSource.Contains('AiUsageMonitor.Windows.Process', [StringComparison]::Ordinal)
+        $hiddenConsoleSource.Contains('AiUsageMonitor.Platform.Windows.Process', [StringComparison]::Ordinal)
     ) 'Claude hidden console must use the shared Windows process lifetime implementation.'
     Assert-Contract (
         $legacyJobSource -notmatch '\bDllImport\b|\bLibraryImport\b'
     ) 'The Claude compatibility wrapper must not retain duplicate native Job Object bindings.'
+
+    # macOS向けsolutionはnet10.0-windows TFMのプロジェクトを含んではならない。含まれていると
+    # macOSでのrestoreがそのプロジェクトの時点で失敗する（Phase 7で本格運用するまでの回帰止め）。
+    $macSlnxPath = Join-Path $projectRoot 'AiUsageMonitor.Mac.slnx'
+    Assert-Contract (Test-Path -LiteralPath $macSlnxPath) 'AiUsageMonitor.Mac.slnx must exist to scope macOS restore/build.'
+    if (Test-Path -LiteralPath $macSlnxPath) {
+        [xml]$macSlnxXml = Get-Content -LiteralPath $macSlnxPath -Raw
+        $macProjectPaths = @($macSlnxXml.SelectNodes('//Project') | ForEach-Object { [string]$_.Path })
+        Assert-Contract ($macProjectPaths.Count -gt 0) 'AiUsageMonitor.Mac.slnx must list at least one project.'
+        $windowsOnlyMacProjects = foreach ($relativePath in $macProjectPaths) {
+            $csprojPath = Join-Path $projectRoot $relativePath
+            if (-not (Test-Path -LiteralPath $csprojPath)) {
+                $relativePath
+                continue
+            }
+            $csprojContent = Get-Content -LiteralPath $csprojPath -Raw
+            if ($csprojContent -match '<TargetFramework>[^<]*-windows') {
+                $relativePath
+            }
+        }
+        Assert-Contract (
+            @($windowsOnlyMacProjects).Count -eq 0
+        ) "AiUsageMonitor.Mac.slnx must not reference Windows-only or missing projects: $($windowsOnlyMacProjects -join ', ')"
+    }
+
+    # D9: UIコードはApp.UIへ一本化し、OS別thin hostだけが対応するPlatform / Claude実装を
+    # 合成する。App.UIがOS固有プロジェクトを参照した時点でこの合成ルートは崩れ、macOSでの
+    # restoreも通らなくなるため、参照方向をここで機械的に固定する。
+    $appUiProjectPath = Join-Path $sourceRoot 'AiUsageMonitor.App.UI\AiUsageMonitor.App.UI.csproj'
+    Assert-Contract (
+        Test-Path -LiteralPath $appUiProjectPath
+    ) 'AiUsageMonitor.App.UI must exist to hold the shared UI composition root.'
+    if (Test-Path -LiteralPath $appUiProjectPath) {
+        [xml]$appUiXml = Get-Content -LiteralPath $appUiProjectPath -Raw
+        $appUiTargetFramework = [string]($appUiXml.Project.PropertyGroup.TargetFramework | Select-Object -First 1)
+        Assert-Contract (
+            $appUiTargetFramework -ceq 'net10.0'
+        ) "AiUsageMonitor.App.UI must target net10.0 so macOS can build it, but targets '$appUiTargetFramework'."
+
+        $forbiddenAppUiReferences = @(
+            'AiUsageMonitor.Platform.Windows',
+            'AiUsageMonitor.Claude.Windows',
+            'AiUsageMonitor.Platform.Mac',
+            'AiUsageMonitor.Claude.Mac',
+            'AiUsageMonitor.App'
+        )
+        $appUiReferenceNames = @(
+            $appUiXml.SelectNodes('//ProjectReference') |
+                ForEach-Object { [IO.Path]::GetFileNameWithoutExtension([string]$_.Include) }
+        )
+        $violations = @($appUiReferenceNames | Where-Object { $forbiddenAppUiReferences -ccontains $_ })
+        Assert-Contract (
+            $violations.Count -eq 0
+        ) "AiUsageMonitor.App.UI must not reference OS-specific or host projects: $($violations -join ', ')"
+    }
 }
 finally {
     if (Test-Path -LiteralPath $resolvedFixtureParent) {

@@ -13,8 +13,11 @@
   </ItemGroup>
   <ItemGroup><Using Include="Xunit" /></ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\src\AiUsageMonitor.Claude.Cli\AiUsageMonitor.Claude.Cli.csproj" />
     <ProjectReference Include="..\..\src\AiUsageMonitor.Claude.Windows\AiUsageMonitor.Claude.Windows.csproj" />
+    <ProjectReference Include="..\..\src\AiUsageMonitor.Platform.Windows\AiUsageMonitor.Platform.Windows.csproj" />
     <ProjectReference Include="..\support\AiUsageMonitor.FakeClaudeCli\AiUsageMonitor.FakeClaudeCli.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\support\AiUsageMonitor.FakeClaudeConsoleHelperHost\AiUsageMonitor.FakeClaudeConsoleHelperHost.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\fixtures\claude-cli-screens\*.txt" LinkBase="fixtures\claude-cli-screens" CopyToOutputDirectory="PreserveNewest" />

@@ -1,7 +1,8 @@
 using System.Text.Json;
-using AiUsageMonitor.Claude.Windows.Cli;
+using AiUsageMonitor.Claude.Cli;
 using AiUsageMonitor.Claude.Windows.Console;
 using AiUsageMonitor.Claude.Windows.Process;
+using AiUsageMonitor.Platform.Windows;
 
 namespace AiUsageMonitor.Claude.Windows.Tests;
 
@@ -57,7 +58,7 @@ public sealed class ClaudeWindowsInfrastructureTests
         string? settingsPath = null;
         try
         {
-            var provisioner = new ClaudeWorkspaceProvisioner(root);
+            var provisioner = new ClaudeWorkspaceProvisioner(new WindowsAppPathProvider(root));
             string workspace = provisioner.EnsureWorkspace();
             Assert.Empty(Directory.EnumerateFileSystemEntries(workspace));
 
@@ -179,7 +180,7 @@ public sealed class ClaudeWindowsInfrastructureTests
         string variantName,
         string expectedReason)
     {
-        string variant = CreateFakeCliVariant(variantName);
+        string variant = CreateFakeHelperHostVariant(variantName);
         try
         {
             var client = new ConsoleHelperClient(variant);
@@ -200,7 +201,7 @@ public sealed class ClaudeWindowsInfrastructureTests
     [Fact]
     public async Task HelperClientAcceptsResponseAtExactCharacterLimit()
     {
-        string variant = CreateFakeCliVariant("helper-at-limit");
+        string variant = CreateFakeHelperHostVariant("helper-at-limit");
         try
         {
             var client = new ConsoleHelperClient(variant);
@@ -220,7 +221,7 @@ public sealed class ClaudeWindowsInfrastructureTests
     [Fact]
     public async Task HelperClientRejectsResponseOneCharacterOverLimit()
     {
-        string variant = CreateFakeCliVariant("helper-oversized");
+        string variant = CreateFakeHelperHostVariant("helper-oversized");
         try
         {
             var client = new ConsoleHelperClient(variant);
@@ -240,9 +241,18 @@ public sealed class ClaudeWindowsInfrastructureTests
 
     private static string FindFakeCli() => AiUsageMonitor.TestSupport.FakeExecutableLocator.FindClaudeFakeCli();
 
-    private static string CreateFakeCliVariant(string name)
+    private static string FindFakeHelperHost() =>
+        AiUsageMonitor.TestSupport.FakeExecutableLocator.FindClaudeFakeConsoleHelperHost();
+
+    /// <summary>CLI本体の異常系（--help / --version）を再現する変種を作る。</summary>
+    private static string CreateFakeCliVariant(string name) => CreateVariantOf(FindFakeCli(), name);
+
+    /// <summary>console helper protocolの異常系を再現する変種を作る。</summary>
+    private static string CreateFakeHelperHostVariant(string name) => CreateVariantOf(FindFakeHelperHost(), name);
+
+    private static string CreateVariantOf(string source, string name)
     {
-        string source = FindFakeCli();
+        // 変種の挙動は実行ファイル名で切り替わるため、名前だけを変えて同じ場所へ複製する。
         string variant = Path.Combine(
             Path.GetDirectoryName(source)!,
             $"{name}-{Guid.NewGuid():N}.exe");

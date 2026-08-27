@@ -1,23 +1,29 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/AiUsageMonitor.App/AiUsageMonitor.App.csproj" />
+    <Project Path="src/AiUsageMonitor.App.UI/AiUsageMonitor.App.UI.csproj" />
     <Project Path="src/AiUsageMonitor.Codex/AiUsageMonitor.Codex.csproj" />
     <Project Path="src/AiUsageMonitor.Claude/AiUsageMonitor.Claude.csproj" />
+    <Project Path="src/AiUsageMonitor.Claude.Cli/AiUsageMonitor.Claude.Cli.csproj" />
     <Project Path="src/AiUsageMonitor.Claude.Windows/AiUsageMonitor.Claude.Windows.csproj" />
     <Project Path="src/AiUsageMonitor.Core/AiUsageMonitor.Core.csproj" />
-    <Project Path="src/AiUsageMonitor.Windows/AiUsageMonitor.Windows.csproj" />
+    <Project Path="src/AiUsageMonitor.Platform/AiUsageMonitor.Platform.csproj" />
+    <Project Path="src/AiUsageMonitor.Platform.Windows/AiUsageMonitor.Platform.Windows.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/AiUsageMonitor.App.Tests/AiUsageMonitor.App.Tests.csproj" />
+    <Project Path="tests/AiUsageMonitor.Claude.Cli.Tests/AiUsageMonitor.Claude.Cli.Tests.csproj" />
     <Project Path="tests/AiUsageMonitor.Claude.Tests/AiUsageMonitor.Claude.Tests.csproj" />
     <Project Path="tests/AiUsageMonitor.Claude.Windows.Tests/AiUsageMonitor.Claude.Windows.Tests.csproj" />
     <Project Path="tests/AiUsageMonitor.Codex.Tests/AiUsageMonitor.Codex.Tests.csproj" />
     <Project Path="tests/AiUsageMonitor.Core.Tests/AiUsageMonitor.Core.Tests.csproj" />
-    <Project Path="tests/AiUsageMonitor.Windows.Tests/AiUsageMonitor.Windows.Tests.csproj" />
+    <Project Path="tests/AiUsageMonitor.Platform.Tests/AiUsageMonitor.Platform.Tests.csproj" />
+    <Project Path="tests/AiUsageMonitor.Platform.Windows.Tests/AiUsageMonitor.Platform.Windows.Tests.csproj" />
   </Folder>
   <Folder Name="/tests/support/">
     <Project Path="tests/support/AiUsageMonitor.FakeAppServer/AiUsageMonitor.FakeAppServer.csproj" />
     <Project Path="tests/support/AiUsageMonitor.FakeClaudeCli/AiUsageMonitor.FakeClaudeCli.csproj" />
+    <Project Path="tests/support/AiUsageMonitor.FakeClaudeConsoleHelperHost/AiUsageMonitor.FakeClaudeConsoleHelperHost.csproj" />
     <Project Path="tests/support/AiUsageMonitor.TopmostTestHost/AiUsageMonitor.TopmostTestHost.csproj" />
   </Folder>
 </Solution>

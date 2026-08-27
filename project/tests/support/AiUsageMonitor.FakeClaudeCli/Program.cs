@@ -1,46 +1,11 @@
 using System.Text;
 using System.IO.Pipes;
 using System.Text.Json;
-using AiUsageMonitor.Claude.Windows.Console;
 
+// Claude CLI本体の模擬。console helper protocol（--claude-console-helper）は扱わない。
+// そちらはWindows専用のAiUsageMonitor.FakeClaudeConsoleHelperHostが担当する。
 string executableName =
     Path.GetFileNameWithoutExtension(Environment.ProcessPath) ?? string.Empty;
-if (args.Contains(ClaudeConsoleHelper.Marker, StringComparer.Ordinal) &&
-    executableName.Contains("helper-hang", StringComparison.Ordinal))
-{
-    await Task.Delay(TimeSpan.FromSeconds(30));
-    return;
-}
-if (args.Contains(ClaudeConsoleHelper.Marker, StringComparer.Ordinal) &&
-    executableName.Contains("helper-invalid", StringComparison.Ordinal))
-{
-    System.Console.WriteLine("not-json");
-    return;
-}
-if (args.Contains(ClaudeConsoleHelper.Marker, StringComparer.Ordinal) &&
-    executableName.Contains("helper-at-limit", StringComparison.Ordinal))
-{
-    WriteExactLengthHelperResponse(ConsoleHelperClient.MaximumResponseChars);
-    return;
-}
-if (args.Contains(ClaudeConsoleHelper.Marker, StringComparer.Ordinal) &&
-    executableName.Contains("helper-oversized", StringComparison.Ordinal))
-{
-    WriteExactLengthHelperResponse(ConsoleHelperClient.MaximumResponseChars + 1);
-    return;
-}
-
-if (args.Contains(ClaudeConsoleHelper.Marker, StringComparer.Ordinal) &&
-    args.Contains("read", StringComparer.Ordinal) &&
-    executableName.Contains("helper-read-fails", StringComparison.Ordinal))
-{
-    var failure = new ConsoleHelperResponse(false, "SCREEN_READ_FAILED", [], 0, 0, 0);
-    System.Console.Write(JsonSerializer.Serialize(failure));
-    return;
-}
-
-if (ClaudeConsoleHelper.TryHandle(args, System.Console.Out))
-    return;
 
 if (args.Contains("--help", StringComparer.Ordinal))
 {
@@ -183,17 +148,6 @@ static string ReadMode()
 {
     string marker = Path.Combine(Environment.CurrentDirectory, "fake-mode.txt");
     return File.Exists(marker) ? File.ReadAllText(marker).Trim() : "ready";
-}
-
-static void WriteExactLengthHelperResponse(int totalChars)
-{
-    // ConsoleHelperClient.MaximumResponseCharsの境界を1文字単位で検証するため、
-    // Reasonフィールドをエスケープ不要なASCII文字で埋めてJSON全体の長さを逆算する。
-    var empty = new ConsoleHelperResponse(true, string.Empty, [], 0, 0, 0);
-    int baseLength = JsonSerializer.Serialize(empty).Length;
-    int paddingLength = Math.Max(0, totalChars - baseLength);
-    var response = new ConsoleHelperResponse(true, new string('x', paddingLength), [], 0, 0, 0);
-    System.Console.Write(JsonSerializer.Serialize(response));
 }
 
 static string? ValueAfter(string[] values, string name)

@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!--
+    D9: UIコードはこのプロジェクトへ一本化し、OS別thin host（App.Windows / App.Mac）が
+    対応するPlatform / Claude実装を合成する。したがってここから参照してよいのは
+    OS非依存のプロジェクトだけであり、Platform.Windows / Claude.Windows / 旧WPF App を
+    参照してはならない。この制約は scripts/test-build-contract.ps1 で機械的に検証する。
+
+    Phase 1時点では実装を持たない。Avalonia UIと共通composition部品はPhase 2で追加する。
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\AiUsageMonitor.Core\AiUsageMonitor.Core.csproj" />
+    <ProjectReference Include="..\AiUsageMonitor.Claude\AiUsageMonitor.Claude.csproj" />
+    <ProjectReference Include="..\AiUsageMonitor.Claude.Cli\AiUsageMonitor.Claude.Cli.csproj" />
+    <ProjectReference Include="..\AiUsageMonitor.Codex\AiUsageMonitor.Codex.csproj" />
+    <ProjectReference Include="..\AiUsageMonitor.Platform\AiUsageMonitor.Platform.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="AiUsageMonitor.App.UI.Tests" />
+  </ItemGroup>
+</Project>

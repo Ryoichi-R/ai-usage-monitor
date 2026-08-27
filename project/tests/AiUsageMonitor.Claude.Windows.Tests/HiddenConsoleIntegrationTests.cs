@@ -1,13 +1,20 @@
 using AiUsageMonitor.Claude.Acquisition;
+using AiUsageMonitor.Claude.Cli;
 using AiUsageMonitor.Claude.Windows.Cli;
 using AiUsageMonitor.Claude.Windows.Console;
 using AiUsageMonitor.Claude.Windows.Process;
+using AiUsageMonitor.Platform.Windows;
 using AiUsageMonitor.Core.Usage;
 
 namespace AiUsageMonitor.Claude.Windows.Tests;
 
 public sealed class HiddenConsoleIntegrationTests
 {
+    private sealed class DelegateExecutableLocator(Func<string?, ClaudeExecutableInfo> resolve) : IClaudeExecutableLocator
+    {
+        public ClaudeExecutableInfo Resolve(string? configuredPath) => resolve(configuredPath);
+    }
+
     [WindowsFact]
     public async Task HiddenConsoleRoundTripAllowsOnlyUsageAndCleansProcess()
     {
@@ -26,7 +33,7 @@ public sealed class HiddenConsoleIntegrationTests
                          HiddenConsoleSession.Start(executable, directory, settings))
             {
                 processId = session.Process.Id;
-                var helper = new ConsoleHelperClient(executable);
+                var helper = new ConsoleHelperClient(FindFakeHelperHost());
                 ConsoleHelperResponse ready = await WaitForAsync(
                     () => helper.ReadAsync(processId, TimeSpan.FromSeconds(5), CancellationToken.None),
                     response => response.Ok &&
@@ -73,9 +80,9 @@ public sealed class HiddenConsoleIntegrationTests
                 null,
                 bridge,
                 TimeSpan.FromSeconds(15),
-                new ClaudeWorkspaceProvisioner(root),
-                new ConsoleHelperClient(executable),
-                _ => new ClaudeExecutableInfo(executable, "2.1.218", true, "Anthropic, PBC", null),
+                new ClaudeWorkspaceProvisioner(new WindowsAppPathProvider(root)),
+                new WindowsClaudeScreenSessionFactory(FindFakeHelperHost()),
+                new DelegateExecutableLocator(_ => new ClaudeExecutableInfo(executable, "2.1.218", true, "Anthropic, PBC", null)),
                 (_, _, _) => Task.FromResult(new ClaudeCliCapabilities(true, "2.1.218", null)));
 
             var observation = await source.RefreshAsync(CancellationToken.None);
@@ -165,16 +172,16 @@ public sealed class HiddenConsoleIntegrationTests
         // 一貫して失敗するケース。認証は壊れていないため、汎用READY_TIMEOUTではなく
         // 取得経路の異常として区別できるCONSOLE_BUFFER_READ_FAILEDを返す。
         string root = await CreateActiveSourceRootAsync("ready");
-        string readFailingHelper = CreateFakeCliVariant("helper-read-fails");
+        string readFailingHelper = CreateFakeHelperHostVariant("helper-read-fails");
         try
         {
             var source = new ClaudeCliActiveSource(
                 null,
                 Path.Combine(root, "claude-statusline-bridge.ps1"),
                 TimeSpan.FromSeconds(2),
-                new ClaudeWorkspaceProvisioner(root),
-                new ConsoleHelperClient(readFailingHelper),
-                _ => new ClaudeExecutableInfo(FindFakeCli(), "2.1.218", true, "Anthropic, PBC", null),
+                new ClaudeWorkspaceProvisioner(new WindowsAppPathProvider(root)),
+                new WindowsClaudeScreenSessionFactory(readFailingHelper),
+                new DelegateExecutableLocator(_ => new ClaudeExecutableInfo(FindFakeCli(), "2.1.218", true, "Anthropic, PBC", null)),
                 (_, _, _) => Task.FromResult(new ClaudeCliCapabilities(true, "2.1.218", null)));
 
             var observation = await source.RefreshAsync(CancellationToken.None);
@@ -199,25 +206,32 @@ public sealed class HiddenConsoleIntegrationTests
             null,
             missingBridge,
             TimeSpan.FromSeconds(2),
-            resolveExecutable: _ => new("", null, false, null, "CLAUDE_NOT_INSTALLED"));
+            new ClaudeWorkspaceProvisioner(new WindowsAppPathProvider()),
+            new WindowsClaudeScreenSessionFactory(FindFakeHelperHost()),
+            new DelegateExecutableLocator(_ => new ClaudeExecutableInfo("", null, false, null, "CLAUDE_NOT_INSTALLED")));
         var untrusted = new ClaudeCliActiveSource(
             null,
             missingBridge,
             TimeSpan.FromSeconds(2),
-            resolveExecutable: _ => new(executable, null, false, null, "UNTRUSTED_EXECUTABLE"));
+            new ClaudeWorkspaceProvisioner(new WindowsAppPathProvider()),
+            new WindowsClaudeScreenSessionFactory(FindFakeHelperHost()),
+            new DelegateExecutableLocator(_ => new ClaudeExecutableInfo(executable, null, false, null, "UNTRUSTED_EXECUTABLE")));
         var unsupported = new ClaudeCliActiveSource(
             null,
             missingBridge,
             TimeSpan.FromSeconds(2),
-            resolveExecutable: _ => new(executable, "2.1.218", true, "Anthropic, PBC", null),
+            new ClaudeWorkspaceProvisioner(new WindowsAppPathProvider()),
+            new WindowsClaudeScreenSessionFactory(FindFakeHelperHost()),
+            new DelegateExecutableLocator(_ => new ClaudeExecutableInfo(executable, "2.1.218", true, "Anthropic, PBC", null)),
             probeCapabilities: (_, _, _) =>
                 Task.FromResult(new ClaudeCliCapabilities(false, "2.1.218", "REQUIRED_FLAG_MISSING")));
         var workspaceFailure = new ClaudeCliActiveSource(
             null,
             missingBridge,
             TimeSpan.FromSeconds(2),
-            new ClaudeWorkspaceProvisioner(blockingRoot),
-            resolveExecutable: _ => new(executable, "2.1.218", true, "Anthropic, PBC", null),
+            new ClaudeWorkspaceProvisioner(new WindowsAppPathProvider(blockingRoot)),
+            new WindowsClaudeScreenSessionFactory(FindFakeHelperHost()),
+            new DelegateExecutableLocator(_ => new ClaudeExecutableInfo(executable, "2.1.218", true, "Anthropic, PBC", null)),
             probeCapabilities: (_, _, _) =>
                 Task.FromResult(new ClaudeCliCapabilities(true, "2.1.218", null)));
 
@@ -256,9 +270,13 @@ public sealed class HiddenConsoleIntegrationTests
 
     private static string FindFakeCli() => AiUsageMonitor.TestSupport.FakeExecutableLocator.FindClaudeFakeCli();
 
-    private static string CreateFakeCliVariant(string name)
+    private static string FindFakeHelperHost() =>
+        AiUsageMonitor.TestSupport.FakeExecutableLocator.FindClaudeFakeConsoleHelperHost();
+
+    /// <summary>console helper protocolの異常系を再現する変種を作る。挙動は実行ファイル名で切り替わる。</summary>
+    private static string CreateFakeHelperHostVariant(string name)
     {
-        string source = FindFakeCli();
+        string source = FindFakeHelperHost();
         string variant = Path.Combine(
             Path.GetDirectoryName(source)!,
             $"{name}-{Guid.NewGuid():N}.exe");
@@ -303,9 +321,9 @@ public sealed class HiddenConsoleIntegrationTests
             null,
             Path.Combine(root, "claude-statusline-bridge.ps1"),
             timeout,
-            new ClaudeWorkspaceProvisioner(root),
-            new ConsoleHelperClient(executable),
-            _ => new ClaudeExecutableInfo(executable, "2.1.218", true, "Anthropic, PBC", null),
+            new ClaudeWorkspaceProvisioner(new WindowsAppPathProvider(root)),
+            new WindowsClaudeScreenSessionFactory(FindFakeHelperHost()),
+            new DelegateExecutableLocator(_ => new ClaudeExecutableInfo(executable, "2.1.218", true, "Anthropic, PBC", null)),
             (_, _, _) => Task.FromResult(new ClaudeCliCapabilities(true, "2.1.218", null)));
     }
 

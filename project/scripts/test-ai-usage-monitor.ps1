@@ -79,14 +79,53 @@ $env:AI_USAGE_MONITOR_TEST_ARTIFACTS_ROOT = $testOutput.ArtifactsPath
             Project = Join-Path $PSScriptRoot '..\tests\AiUsageMonitor.Claude.Tests\AiUsageMonitor.Claude.Tests.csproj'
         },
         [pscustomobject]@{
+            Package = 'AiUsageMonitor.Claude.Cli'
+            Project = Join-Path $PSScriptRoot '..\tests\AiUsageMonitor.Claude.Cli.Tests\AiUsageMonitor.Claude.Cli.Tests.csproj'
+        },
+        [pscustomobject]@{
             Package = 'AiUsageMonitor.Claude.Windows'
             Project = Join-Path $PSScriptRoot '..\tests\AiUsageMonitor.Claude.Windows.Tests\AiUsageMonitor.Claude.Windows.Tests.csproj'
         },
         [pscustomobject]@{
-            Package = 'AiUsageMonitor.Windows'
-            Project = Join-Path $PSScriptRoot '..\tests\AiUsageMonitor.Windows.Tests\AiUsageMonitor.Windows.Tests.csproj'
+            Package = 'AiUsageMonitor.Platform'
+            Project = Join-Path $PSScriptRoot '..\tests\AiUsageMonitor.Platform.Tests\AiUsageMonitor.Platform.Tests.csproj'
+        },
+        [pscustomobject]@{
+            Package = 'AiUsageMonitor.Platform.Windows'
+            Project = Join-Path $PSScriptRoot '..\tests\AiUsageMonitor.Platform.Windows.Tests\AiUsageMonitor.Platform.Windows.Tests.csproj'
         }
     )
+
+    # 母集団から意図せず外れたproduction assemblyがあると、閾値を満たしていても実際には
+    # 未検証のコードが混ざる。src配下の実在プロジェクトとcoverageTargetsを突き合わせ、
+    # どちらにも属さないものが現れた時点で失敗させる。除外は理由付きでここに明示する。
+    $intentionallyUncoveredPackages = [ordered]@{
+        # WPF UI。Phase 2でAvaloniaへ移植し、App.Windows / App.UIとして母集団へ入れる。
+        'AiUsageMonitor.App'    = 'WPF UI is verified by App.Tests and manual acceptance until the Phase 2 Avalonia port.'
+        # D9の参照方向を先に固定するための器。Phase 1時点で計測対象の実装を持たない。
+        'AiUsageMonitor.App.UI' = 'Holds no implementation until the Phase 2 Avalonia port.'
+    }
+    $productionPackages = @(
+        Get-ChildItem -Path (Join-Path $projectRoot 'src') -Directory |
+            Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName "$($_.Name).csproj") } |
+            ForEach-Object { $_.Name }
+    )
+    $measuredPackages = @($coverageTargets | ForEach-Object { $_.Package })
+    $unaccountedPackages = @(
+        $productionPackages | Where-Object {
+            $measuredPackages -notcontains $_ -and -not $intentionallyUncoveredPackages.Contains($_)
+        }
+    )
+    if ($unaccountedPackages.Count -gt 0) {
+        throw ("Production assemblies are neither measured nor explicitly excluded: " +
+            "$($unaccountedPackages -join ', '). Add a coverage target or record the exclusion reason.")
+    }
+    $staleExclusions = @(
+        $intentionallyUncoveredPackages.Keys | Where-Object { $productionPackages -notcontains $_ }
+    )
+    if ($staleExclusions.Count -gt 0) {
+        throw "Coverage exclusions name projects that no longer exist: $($staleExclusions -join ', ')."
+    }
 
     # An isolated artifacts root starts with no restored obj/project.assets.json, unlike the
     # project tree where an earlier ordinary restore is normally already present. Restore once
@@ -135,9 +174,14 @@ $env:AI_USAGE_MONITOR_TEST_ARTIFACTS_ROOT = $testOutput.ArtifactsPath
                 }
 
                 $packagePrefix = $packageName.TrimEnd('\') + '\'
-                if ($sourcePath.StartsWith($packagePrefix, [StringComparison]::OrdinalIgnoreCase)) {
-                    $sourcePath = $sourcePath.Substring($packagePrefix.Length)
+                if (-not $sourcePath.StartsWith($packagePrefix, [StringComparison]::OrdinalIgnoreCase)) {
+                    # Coverletは実行時にロードされた依存production assembly（Core/Claude等）の
+                    # クラスも同じpackage要素の下に列挙することがある。それらは依存先自身の
+                    # coverageTargetエントリで計測されるため、ここではこのpackage自身の
+                    # productionプロジェクト配下のsourceだけを対象にする。
+                    continue
                 }
+                $sourcePath = $sourcePath.Substring($packagePrefix.Length)
 
                 foreach ($line in @($class.lines.line)) {
                     $key = '{0}|{1}|{2}' -f $packageName, $sourcePath, $line.number
@@ -161,9 +205,30 @@ $env:AI_USAGE_MONITOR_TEST_ARTIFACTS_ROOT = $testOutput.ArtifactsPath
     if ($valid -eq 0) { throw 'No AiUsageMonitor source lines were found in coverage reports.' }
     $covered = @($lineCoverage.Values | Where-Object { $_ }).Count
     $percentage = [Math]::Round(($covered * 100.0) / $valid, 2)
+
+    # OS別の計測母集団をmanifestとして残す。どのassemblyを測り、どれをなぜ除外したかが
+    # 後から追えないと、閾値だけ見て「検証済み」と誤読されうる。
+    $manifestPath = Join-Path $testOutput.ResultsPath 'coverage-manifest.json'
+    [pscustomobject]@{
+        generatedAtUtc         = [DateTimeOffset]::UtcNow.ToString('o')
+        operatingSystem        = if ($IsWindows) { 'Windows' } elseif ($IsMacOS) { 'macOS' } else { 'Other' }
+        thresholdPercent       = $Threshold
+        coveragePercent        = $percentage
+        coveredLines           = $covered
+        totalLines             = $valid
+        measuredPackages       = @($measuredPackages | Sort-Object)
+        intentionallyUncovered = @(
+            $intentionallyUncoveredPackages.Keys | Sort-Object | ForEach-Object {
+                [pscustomobject]@{ package = $_; reason = $intentionallyUncoveredPackages[$_] }
+            }
+        )
+    } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $manifestPath -Encoding utf8
+
     "Coverage scope: $([string]::Join(', ', @($coverageTargets.Package | Sort-Object)))"
     "Coverage: $percentage% ($covered/$valid lines)"
+    "Excluded from the measured population: $([string]::Join(', ', @($intentionallyUncoveredPackages.Keys | Sort-Object)))"
     "Reports: $($testOutput.ResultsPath)"
+    "Manifest: $manifestPath"
     if ($percentage -lt $Threshold) {
         throw "Coverage $percentage% is below threshold $Threshold%."
     }

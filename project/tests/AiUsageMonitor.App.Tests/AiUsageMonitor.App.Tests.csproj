@@ -22,7 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\AiUsageMonitor.App\AiUsageMonitor.App.csproj" />
-    <ProjectReference Include="..\..\src\AiUsageMonitor.Windows\AiUsageMonitor.Windows.csproj" />
+    <ProjectReference Include="..\..\src\AiUsageMonitor.Platform.Windows\AiUsageMonitor.Platform.Windows.csproj" />
     <ProjectReference Include="..\support\AiUsageMonitor.TopmostTestHost\AiUsageMonitor.TopmostTestHost.csproj"
                       ReferenceOutputAssembly="false" />
     <Compile Include="..\TestSupport\FakeExecutableLocator.cs" Link="TestSupport\FakeExecutableLocator.cs" />

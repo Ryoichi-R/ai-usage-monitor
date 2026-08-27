@@ -2,19 +2,15 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using AiUsageMonitor.Claude.Cli;
 
 namespace AiUsageMonitor.Claude.Windows.Process;
 
-public sealed record ClaudeExecutableInfo(
-    string Path,
-    string? Version,
-    bool SignatureValid,
-    string? Publisher,
-    string? FailureReason);
-
 /// <summary>公式install経路から署名済みnative Claude CLIを解決する。</summary>
-public sealed class ClaudeExecutableLocator
+public sealed class ClaudeExecutableLocator : IClaudeExecutableLocator
 {
+    ClaudeExecutableInfo IClaudeExecutableLocator.Resolve(string? configuredPath) => Resolve(configuredPath);
+
     public static ClaudeExecutableInfo Resolve(string? configuredPath)
     {
         if (!OperatingSystem.IsWindows())

@@ -9,7 +9,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using AiUsageMonitor.Core.Presentation;
 using AiUsageMonitor.Core.Settings;
-using AiUsageMonitor.Windows.Window;
+using AiUsageMonitor.Platform.Windows.Window;
 using Microsoft.Win32;
 
 namespace AiUsageMonitor.App;

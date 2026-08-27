@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="AiUsageMonitor.Platform.Tests" />
+    <InternalsVisibleTo Include="AiUsageMonitor.Platform.Windows" />
+    <InternalsVisibleTo Include="AiUsageMonitor.Platform.Windows.Tests" />
+  </ItemGroup>
+</Project>

@@ -5,9 +5,11 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\AiUsageMonitor.Windows\AiUsageMonitor.Windows.csproj" />
+    <ProjectReference Include="..\AiUsageMonitor.Platform\AiUsageMonitor.Platform.csproj" />
+    <ProjectReference Include="..\AiUsageMonitor.Platform.Windows\AiUsageMonitor.Platform.Windows.csproj" />
     <ProjectReference Include="..\AiUsageMonitor.Core\AiUsageMonitor.Core.csproj" />
     <ProjectReference Include="..\AiUsageMonitor.Claude\AiUsageMonitor.Claude.csproj" />
+    <ProjectReference Include="..\AiUsageMonitor.Claude.Cli\AiUsageMonitor.Claude.Cli.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="AiUsageMonitor.Claude.Windows.Tests" />

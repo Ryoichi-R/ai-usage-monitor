@@ -5,6 +5,7 @@ using System.Windows.Threading;
 using AiUsageMonitor.Claude.Windows.Process;
 using AiUsageMonitor.Core.Usage;
 using AiUsageMonitor.Core.Presentation;
+using AiUsageMonitor.Platform.Windows;
 
 namespace AiUsageMonitor.App;
 
@@ -26,7 +27,7 @@ public partial class ClaudeSetupWindow : Window
         InitializeComponent();
         _statusProvider = statusProvider;
         _refresh = refresh;
-        var workspace = new ClaudeWorkspaceProvisioner();
+        var workspace = new ClaudeWorkspaceProvisioner(new WindowsAppPathProvider());
         _settingsFolder = workspace.EnsureWorkspace();
         SettingsFolderBox.Text = _settingsFolder;
         string command = string.IsNullOrWhiteSpace(executablePath) ? "claude" : executablePath;

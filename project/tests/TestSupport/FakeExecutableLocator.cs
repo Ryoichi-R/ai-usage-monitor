@@ -10,7 +10,17 @@ public static class FakeExecutableLocator
         Find(projectName: "AiUsageMonitor.FakeAppServer", tfmSegment: "net10.0", displayName: "Fake app-server");
 
     public static string FindClaudeFakeCli() =>
-        Find(projectName: "AiUsageMonitor.FakeClaudeCli", tfmSegment: "net10.0-windows10.0.19041.0", displayName: "Fake Claude CLI");
+        Find(projectName: "AiUsageMonitor.FakeClaudeCli", tfmSegment: "net10.0", displayName: "Fake Claude CLI");
+
+    /// <summary>
+    /// ConsoleHelperClientが起動するhost役の実行ファイル。CLI本体の模擬とは別プロセスであり、
+    /// Windows専用のconsole helper protocolだけを提供する。
+    /// </summary>
+    public static string FindClaudeFakeConsoleHelperHost() =>
+        Find(
+            projectName: "AiUsageMonitor.FakeClaudeConsoleHelperHost",
+            tfmSegment: "net10.0-windows10.0.19041.0",
+            displayName: "Fake Claude console helper host");
 
     public static string FindTopmostTestHost() =>
         Find(

@@ -1,5 +1,5 @@
 using AiUsageMonitor.Core.Settings;
-using AiUsageMonitor.Windows.Window;
+using AiUsageMonitor.Platform.Windows.Window;
 
 namespace AiUsageMonitor.App.Tests;
 

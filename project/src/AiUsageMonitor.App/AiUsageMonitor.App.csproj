@@ -20,8 +20,10 @@
     <ProjectReference Include="..\AiUsageMonitor.Core\AiUsageMonitor.Core.csproj" />
     <ProjectReference Include="..\AiUsageMonitor.Codex\AiUsageMonitor.Codex.csproj" />
     <ProjectReference Include="..\AiUsageMonitor.Claude\AiUsageMonitor.Claude.csproj" />
+    <ProjectReference Include="..\AiUsageMonitor.Claude.Cli\AiUsageMonitor.Claude.Cli.csproj" />
     <ProjectReference Include="..\AiUsageMonitor.Claude.Windows\AiUsageMonitor.Claude.Windows.csproj" />
-    <ProjectReference Include="..\AiUsageMonitor.Windows\AiUsageMonitor.Windows.csproj" />
+    <ProjectReference Include="..\AiUsageMonitor.Platform\AiUsageMonitor.Platform.csproj" />
+    <ProjectReference Include="..\AiUsageMonitor.Platform.Windows\AiUsageMonitor.Platform.Windows.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="AiUsageMonitor.App.Tests" />

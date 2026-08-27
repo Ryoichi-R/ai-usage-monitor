@@ -1,5 +1,5 @@
 using System.Diagnostics;
-using AiUsageMonitor.Windows.Process;
+using AiUsageMonitor.Platform.Windows.Process;
 using DiagnosticsProcess = System.Diagnostics.Process;
 
 namespace AiUsageMonitor.Claude.Windows.Console;

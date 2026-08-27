@@ -4,6 +4,7 @@ using System.IO;
 using System.Threading;
 using System.Windows;
 using AiUsageMonitor.Claude.Acquisition;
+using AiUsageMonitor.Claude.Cli;
 using AiUsageMonitor.Codex.Client;
 using AiUsageMonitor.Codex.Runtime;
 using AiUsageMonitor.Claude.Transport;
@@ -11,8 +12,12 @@ using AiUsageMonitor.Claude.Windows.Cli;
 using AiUsageMonitor.Claude.Windows.Console;
 using AiUsageMonitor.Core.Settings;
 using AiUsageMonitor.Core.Usage;
-using AiUsageMonitor.Windows.Startup;
-using AiUsageMonitor.Windows.Process;
+using AiUsageMonitor.Platform;
+using AiUsageMonitor.Platform.Windows;
+using AiUsageMonitor.Platform.Windows.Startup;
+using AiUsageMonitor.Platform.Windows.Process;
+using ClaudeWorkspaceProvisioner = AiUsageMonitor.Claude.Windows.Process.ClaudeWorkspaceProvisioner;
+using ClaudeExecutableLocator = AiUsageMonitor.Claude.Windows.Process.ClaudeExecutableLocator;
 
 namespace AiUsageMonitor.App;
 
@@ -21,8 +26,8 @@ public partial class App : System.Windows.Application
 {
     // Preserve pre-rename identifiers so existing settings and a running legacy
     // binary remain compatible with AI Usage Monitor.
+    // 設定ディレクトリ名の互換は WindowsAppPathProvider が保持する。
     private const string LegacyMutexName = "Local\\CodexUsageMonitor-5C898151";
-    private const string LegacySettingsDirectoryName = "CodexUsageMonitor";
     private readonly CancellationTokenSource _lifetime = new();
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
     private readonly ClaudeManualRefreshState _manualRefreshState = new();
@@ -38,11 +43,17 @@ public partial class App : System.Windows.Application
     private Task? _claudePollTask;
     private ClaudeUsagePipeServer? _claudeServer;
     private ClaudeSetupWindow? _claudeSetupWindow;
+    // Phase 1時点でこのhostはWindows専用のため具象型で保持する。抽象境界は
+    // ClaudeWorkspaceProvisionerがIAppPathProviderを受け取る点で成立している。
+    private static readonly WindowsAppPathProvider AppPaths = new();
     private readonly ClaudeUsageRuntime _claudeRuntime = new(configuration =>
         new ClaudeCliActiveSource(
             configuration.ExecutablePath,
             configuration.BridgePath,
-            configuration.StartupTimeout));
+            configuration.StartupTimeout,
+            new ClaudeWorkspaceProvisioner(AppPaths),
+            new WindowsClaudeScreenSessionFactory(),
+            new ClaudeExecutableLocator()));
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -60,10 +71,7 @@ public partial class App : System.Windows.Application
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         try
         {
-            string settingsPath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                LegacySettingsDirectoryName,
-                "settings.json");
+            string settingsPath = AppPaths.SettingsFilePath;
             bool isFirstRun = !File.Exists(settingsPath);
             _store = new FileSystemSettingsStore(settingsPath);
             _settings = await _store.LoadAsync();

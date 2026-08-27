@@ -3,7 +3,7 @@ using System.Windows;
 using System.Windows.Threading;
 using AiUsageMonitor.Core.Presentation;
 using AiUsageMonitor.Core.Settings;
-using AiUsageMonitor.Windows.Window;
+using AiUsageMonitor.Platform.Windows.Window;
 
 namespace AiUsageMonitor.App;
 

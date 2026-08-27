@@ -1,28 +1,30 @@
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using AiUsageMonitor.Claude.Cli;
+using AiUsageMonitor.Platform;
 
 namespace AiUsageMonitor.Claude.Windows.Process;
 
-public sealed class ClaudeWorkspaceProvisioner
+public sealed class ClaudeWorkspaceProvisioner : IClaudeWorkspaceProvisioner
 {
-    // Keep the trusted workspace path stable across the product rename.
-    private const string LegacyAppDataDirectoryName = "CodexUsageMonitor";
-
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
+    private readonly string _temporaryDirectory;
+
     public string WorkspacePath { get; }
 
-    public ClaudeWorkspaceProvisioner(string? localAppData = null)
+    /// <summary>
+    /// workspaceと一時settingsの置き場所は<see cref="IAppPathProvider"/>が用途別に解決する。
+    /// SpecialFolderの暗黙マッピングへここから直接依存しない（macOSでの解決先差異を吸収するため）。
+    /// </summary>
+    public ClaudeWorkspaceProvisioner(IAppPathProvider paths)
     {
-        string root = localAppData ??
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        WorkspacePath = Path.Combine(
-            root,
-            LegacyAppDataDirectoryName,
-            "ClaudeCliWorkspace");
+        ArgumentNullException.ThrowIfNull(paths);
+        WorkspacePath = paths.ClaudeWorkspaceDirectory;
+        _temporaryDirectory = paths.TemporaryDirectory;
     }
 
     public string EnsureWorkspace()
@@ -42,11 +44,8 @@ public sealed class ClaudeWorkspaceProvisioner
             pipeName.Any(character => !char.IsAsciiLetterOrDigit(character) && character != '-'))
             throw new ArgumentException("Unsafe bridge path or pipe name.");
 
-        string directory = Path.Combine(
-            Path.GetDirectoryName(WorkspacePath)!,
-            "Temp");
-        Directory.CreateDirectory(directory);
-        string path = Path.Combine(directory, $"claude-settings-{Guid.NewGuid():N}.json");
+        Directory.CreateDirectory(_temporaryDirectory);
+        string path = Path.Combine(_temporaryDirectory, $"claude-settings-{Guid.NewGuid():N}.json");
         string command =
             $"powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File \"{fullBridge}\" -PipeName {pipeName}";
         var settings = new

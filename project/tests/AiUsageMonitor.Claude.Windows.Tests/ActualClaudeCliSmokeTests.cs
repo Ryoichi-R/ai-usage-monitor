@@ -1,7 +1,8 @@
 using AiUsageMonitor.Claude.Acquisition;
+using AiUsageMonitor.Claude.Cli;
 using AiUsageMonitor.Claude.Windows.Cli;
-using AiUsageMonitor.Claude.Windows.Console;
 using AiUsageMonitor.Claude.Windows.Process;
+using AiUsageMonitor.Platform.Windows;
 using AiUsageMonitor.Core.Usage;
 
 namespace AiUsageMonitor.Claude.Windows.Tests;
@@ -36,7 +37,9 @@ public sealed class ActualClaudeCliSmokeTests
             executable,
             bridge,
             TimeSpan.FromSeconds(timeoutSeconds),
-            helper: new ConsoleHelperClient(helper));
+            new ClaudeWorkspaceProvisioner(new WindowsAppPathProvider()),
+            new WindowsClaudeScreenSessionFactory(helper),
+            new ClaudeExecutableLocator());
 
         ClaudeUsageObservation result = await source.RefreshAsync(CancellationToken.None);
 
