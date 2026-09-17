@@ -70,6 +70,9 @@ public sealed class TrayController : IDisposable
         _compactDisplayModeItem.Checked = compact;
     }
 
+    public void ShowInfo(string message) =>
+        _icon.ShowBalloonTip(5000, NormalTooltip, message, Forms.ToolTipIcon.Info);
+
     public void SetTopmostDegraded(bool degraded) =>
         _icon.Text = degraded ? TopmostDegradedTooltip : NormalTooltip;
 }

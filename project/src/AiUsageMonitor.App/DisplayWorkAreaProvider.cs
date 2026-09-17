@@ -12,7 +12,8 @@ internal readonly record struct PhysicalWindowPosition(int Left, int Top);
 internal readonly record struct CapturedDisplayPosition(
     string DeviceName,
     double LeftFraction,
-    double TopFraction);
+    double TopFraction,
+    string? StableId = null);
 
 /// <summary>
 /// Win32の物理pixel snapshotと、Coreが扱うDIPの境界を一箇所に閉じ込める。
@@ -26,12 +27,17 @@ internal sealed class DisplayWorkAreaProvider
 
     internal bool TryGetCurrent(
         string? savedDeviceName,
+        string? savedStableId,
         nint windowHandle,
         (int X, int Y)? centerPointPixels,
         out DisplayWorkArea workArea,
         out MonitorResolutionResult resolution)
     {
-        resolution = _resolver.Resolve(savedDeviceName, windowHandle, centerPointPixels);
+        resolution = _resolver.Resolve(
+            savedDeviceName,
+            windowHandle,
+            centerPointPixels,
+            savedStableId: savedStableId);
         if (!resolution.Succeeded)
         {
             workArea = default;
@@ -81,7 +87,8 @@ internal sealed class DisplayWorkAreaProvider
         position = new CapturedDisplayPosition(
             snapshot.DeviceName,
             Math.Clamp(left, 0, 1),
-            Math.Clamp(top, 0, 1));
+            Math.Clamp(top, 0, 1),
+            snapshot.StableId);
         return double.IsFinite(position.LeftFraction) && double.IsFinite(position.TopFraction);
     }
 

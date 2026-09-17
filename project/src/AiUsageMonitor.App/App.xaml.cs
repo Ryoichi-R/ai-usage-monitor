@@ -28,10 +28,12 @@ public partial class App : System.Windows.Application
     // binary remain compatible with AI Usage Monitor.
     // 設定ディレクトリ名の互換は WindowsAppPathProvider が保持する。
     private const string LegacyMutexName = "Local\\CodexUsageMonitor-5C898151";
+    private const string ActivationEventName = "Local\\AiUsageMonitor-Activate-5C898151";
     private readonly CancellationTokenSource _lifetime = new();
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
     private readonly ClaudeManualRefreshState _manualRefreshState = new();
     private Mutex? _mutex;
+    private WindowsInstanceActivationChannel? _activationChannel;
     private FileSystemSettingsStore? _store;
     private AppSettings _settings = new();
     private MainWindow? _window;
@@ -64,7 +66,16 @@ public partial class App : System.Windows.Application
             return;
         }
         _mutex = new Mutex(true, LegacyMutexName, out bool first);
-        if (!first) { Shutdown(); return; }
+        if (!first)
+        {
+            // 常駐中のインスタンスへウィジェットの再表示を依頼してから終了する。
+            WindowsInstanceActivationChannel.TrySignal(ActivationEventName);
+            Shutdown();
+            return;
+        }
+        _activationChannel = WindowsInstanceActivationChannel.Listen(
+            ActivationEventName,
+            () => Dispatcher.BeginInvoke(OnActivationRequested));
         // 起動処理は多数の外部リソース（設定file、レジストリ、Codex/Claude起動）に触れる。
         // ここで想定外の例外が漏れるとasync void経由で無表示のままクラッシュするため、
         // 致命的な失敗だけは理由を提示してから終了する。
@@ -130,6 +141,13 @@ public partial class App : System.Windows.Application
             System.Windows.MessageBoxButton.OK,
             System.Windows.MessageBoxImage.Warning);
         e.Handled = true;
+    }
+
+    private void OnActivationRequested()
+    {
+        if (_window is null || _backgroundCoordinator is null || _tray is null) return;
+        if (!_window.IsVisible) _backgroundCoordinator.SetWidgetVisible(true);
+        _tray.ShowInfo("AI Usage Monitorは起動中です。表示先はトレイの「設定…」→「表示位置」で変更できます。");
     }
 
     private async Task PollClaudeAsync(CancellationToken cancellationToken)
@@ -502,6 +520,7 @@ public partial class App : System.Windows.Application
     protected override async void OnExit(ExitEventArgs e)
     {
         _lifetime.Cancel();
+        _activationChannel?.Dispose();
         _backgroundCoordinator?.Dispose();
         _claudeRuntime.Disable();
         // 通常はOperationCanceledExceptionだけで終わるが、pollループ内で拾いきれない

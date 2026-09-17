@@ -451,6 +451,7 @@ public sealed class UsageDomainTests
         var captured = new AppSettings
         {
             MonitorDeviceName = "DISPLAY-ACTUAL",
+            MonitorStableId = "MONITOR-ACTUAL",
             PlacementMode = PlacementMode.Custom,
             CustomLeftFraction = .25,
             CustomTopFraction = .75,
@@ -460,9 +461,19 @@ public sealed class UsageDomainTests
 
         Assert.Equal(PlacementMode.Custom, result.PlacementMode);
         Assert.Equal("DISPLAY-ACTUAL", result.MonitorDeviceName);
+        Assert.Equal("MONITOR-ACTUAL", result.MonitorStableId);
         Assert.Equal(.25, result.CustomLeftFraction);
         Assert.Equal(.75, result.CustomTopFraction);
         Assert.Equal(PlacementAnchor.BottomRight, result.Anchor);
+    }
+
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData("   ", null)]
+    [InlineData("  MONITOR-A ", "MONITOR-A")]
+    public void NormalizedTrimsMonitorStableId(string? stored, string? expected)
+    {
+        Assert.Equal(expected, new AppSettings { MonitorStableId = stored }.Normalized().MonitorStableId);
     }
 
     private sealed record LegacySettings

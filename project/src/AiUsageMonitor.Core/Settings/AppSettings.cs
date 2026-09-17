@@ -43,6 +43,11 @@ public sealed record AppSettings
     public double BackgroundEdgeFadePercent { get; init; } = AppearanceSettingsValidator.DefaultBackgroundEdgeFadePercent;
     public bool HideBackgroundBehindWindows { get; init; }
     public string? MonitorDeviceName { get; init; }
+    /// <summary>
+    /// モニタのdevice interface path。<see cref="MonitorDeviceName"/>（DISPLAYn）は接続変更で振り直されるため、
+    /// 値がある場合はこちらだけで表示先を照合する。旧設定との互換のためnullを許容する。
+    /// </summary>
+    public string? MonitorStableId { get; init; }
     public PlacementAnchor Anchor { get; init; } = PlacementAnchor.TopRight;
     public PlacementMode PlacementMode { get; init; } = PlacementMode.Preset;
     public double HorizontalMarginDip { get; init; } = 12;
@@ -79,6 +84,7 @@ public sealed record AppSettings
             VerticalMarginDip = double.IsFinite(VerticalMarginDip) ? Math.Clamp(VerticalMarginDip, 0, 200) : 12,
             CustomLeftFraction = NormalizeFraction(CustomLeftFraction),
             CustomTopFraction = NormalizeFraction(CustomTopFraction),
+            MonitorStableId = string.IsNullOrWhiteSpace(MonitorStableId) ? null : MonitorStableId.Trim(),
             CodexExecutablePath = string.IsNullOrWhiteSpace(CodexExecutablePath) ? null : CodexExecutablePath.Trim(),
             ClaudeExecutablePath = string.IsNullOrWhiteSpace(ClaudeExecutablePath) ? null : ClaudeExecutablePath.Trim(),
             ClaudeUsageAcquisitionMode = Enum.IsDefined(ClaudeUsageAcquisitionMode)

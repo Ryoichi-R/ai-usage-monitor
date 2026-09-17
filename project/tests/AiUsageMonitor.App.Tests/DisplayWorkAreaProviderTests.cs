@@ -47,8 +47,27 @@ public sealed class DisplayWorkAreaProviderTests
 
         Assert.True(result);
         Assert.Equal("DISPLAY2", captured.DeviceName);
+        Assert.Null(captured.StableId);
         Assert.Equal(.5, captured.LeftFraction, 3);
         Assert.Equal(100d / 700d, captured.TopFraction, 3);
+    }
+
+    [Fact]
+    public void CaptureCarriesMonitorStableId()
+    {
+        var snapshot = new MonitorWorkAreaSnapshot(
+            new nint(1),
+            "DISPLAY3",
+            new MonitorPixelRect(0, 0, 1920, 1080),
+            96,
+            96,
+            StableId: "MONITOR-B");
+
+        Assert.True(DisplayWorkAreaProvider.TryCaptureCustomPosition(
+            snapshot,
+            new MonitorPixelRect(0, 0, 100, 100),
+            out CapturedDisplayPosition captured));
+        Assert.Equal("MONITOR-B", captured.StableId);
     }
 
     [Fact]
@@ -62,7 +81,7 @@ public sealed class DisplayWorkAreaProviderTests
         };
         var provider = new DisplayWorkAreaProvider(new MonitorWorkAreaResolver(native));
 
-        bool result = provider.TryGetCurrent("DISPLAY2", new nint(42), null, out DisplayWorkArea area, out _);
+        bool result = provider.TryGetCurrent("DISPLAY2", null, new nint(42), null, out DisplayWorkArea area, out _);
 
         Assert.True(result);
         Assert.Equal(0, area.LocalDipArea.Left);
@@ -174,5 +193,6 @@ public sealed class DisplayWorkAreaProviderTests
 
         public nint MonitorFromWindow(nint windowHandle) => Infos[0].Handle;
         public nint MonitorFromPoint(int x, int y) => Infos[0].Handle;
+        public string? GetStableId(string deviceName) => null;
     }
 }

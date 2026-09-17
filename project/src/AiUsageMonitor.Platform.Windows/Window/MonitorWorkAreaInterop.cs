@@ -11,14 +11,16 @@ internal readonly record struct MonitorPixelRect(int Left, int Top, int Right, i
 internal readonly record struct NativeMonitorInfo(
     nint Handle,
     string DeviceName,
-    MonitorPixelRect WorkingArea);
+    MonitorPixelRect WorkingArea,
+    bool IsPrimary = false);
 
 internal readonly record struct MonitorWorkAreaSnapshot(
     nint Handle,
     string DeviceName,
     MonitorPixelRect WorkingArea,
     uint DpiX,
-    uint DpiY);
+    uint DpiY,
+    string? StableId = null);
 
 internal readonly record struct MonitorResolutionResult(
     bool Succeeded,
@@ -44,6 +46,9 @@ internal interface IMonitorNativeApi
     nint MonitorFromWindow(nint windowHandle);
 
     nint MonitorFromPoint(int x, int y);
+
+    /// <summary>GDI device名（DISPLAYn）に接続中のモニタのdevice interface path。取得できなければnull。</summary>
+    string? GetStableId(string deviceName);
 }
 
 internal sealed class MonitorWorkAreaResolver
@@ -57,28 +62,50 @@ internal sealed class MonitorWorkAreaResolver
         string? savedDeviceName,
         nint windowHandle,
         (int X, int Y)? centerPointPixels = null,
-        bool preferCenterPoint = false)
+        bool preferCenterPoint = false,
+        string? savedStableId = null)
     {
         var handles = new List<nint>();
         if (!_native.TryEnumerateMonitors(handles, out int enumError) || handles.Count == 0)
             return MonitorResolutionResult.Failure("EnumDisplayMonitors", enumError);
 
         NativeMonitorInfo? saved = null;
+        string? savedInfoStableId = null;
         var infos = new List<NativeMonitorInfo>(handles.Count);
         foreach (nint handle in handles)
         {
             if (!_native.TryGetMonitorInfo(handle, out NativeMonitorInfo info, out int infoError))
                 return MonitorResolutionResult.Failure("GetMonitorInfo", infoError);
             infos.Add(info);
-            if (savedDeviceName is not null &&
+            if (saved is not null) continue;
+            if (savedStableId is not null)
+            {
+                // DISPLAYnは接続変更で別モニタへ振り直されるため、固有IDがある場合は名前で照合しない。
+                string? stableId = _native.GetStableId(info.DeviceName);
+                if (string.Equals(savedStableId, stableId, StringComparison.OrdinalIgnoreCase))
+                {
+                    saved = info;
+                    savedInfoStableId = stableId;
+                }
+            }
+            else if (savedDeviceName is not null &&
                 string.Equals(savedDeviceName, info.DeviceName, StringComparison.OrdinalIgnoreCase))
+            {
                 saved = info;
+            }
         }
 
         NativeMonitorInfo selected;
         if (saved is { } savedInfo)
         {
             selected = savedInfo;
+        }
+        else if (!preferCenterPoint && infos.FirstOrDefault(info => info.IsPrimary) is { Handle: not 0 } primary)
+        {
+            // 自動指定、または保存済みdeviceが消失した場合は、設定画面の「自動（プライマリ）」表記どおり
+            // プライマリへ戻す。ウィンドウ最寄りへ戻すと、DISPLAY番号の振り直し後に非プライマリの隅へ
+            // 表示され続け、起動していないように見える。
+            selected = primary;
         }
         else
         {
@@ -103,7 +130,8 @@ internal sealed class MonitorWorkAreaResolver
             selected.DeviceName,
             selected.WorkingArea,
             dpiX,
-            dpiY));
+            dpiY,
+            savedInfoStableId ?? _native.GetStableId(selected.DeviceName)));
     }
 
     internal MonitorResolutionResult ResolveForDrag(
@@ -160,7 +188,8 @@ internal sealed unsafe class NativeMonitorApi : IMonitorNativeApi
                 nativeInfo.Work.Left,
                 nativeInfo.Work.Top,
                 nativeInfo.Work.Right,
-                nativeInfo.Work.Bottom));
+                nativeInfo.Work.Bottom),
+            (nativeInfo.Flags & NativeMethods.MonitorInfoPrimary) != 0);
         return true;
     }
 
@@ -187,6 +216,26 @@ internal sealed unsafe class NativeMonitorApi : IMonitorNativeApi
 
     public nint MonitorFromPoint(int x, int y) =>
         NativeMethods.MonitorFromPoint(new NativeMethods.POINT { X = x, Y = y }, NativeMethods.MonitorDefaultToNearest);
+
+    public string? GetStableId(string deviceName)
+    {
+        if (string.IsNullOrEmpty(deviceName)) return null;
+        string? firstAttached = null;
+        for (uint index = 0; ; index++)
+        {
+            var device = new NativeMethods.DISPLAY_DEVICE
+            {
+                Cb = (uint)Marshal.SizeOf<NativeMethods.DISPLAY_DEVICE>(),
+            };
+            if (!NativeMethods.EnumDisplayDevices(deviceName, index, ref device, NativeMethods.EddGetDeviceInterfaceName))
+                break;
+            if (string.IsNullOrWhiteSpace(device.DeviceID)) continue;
+            // 複製表示では1つのDISPLAYnに複数モニタが属する。稼働中のモニタを優先する。
+            if ((device.StateFlags & NativeMethods.DisplayDeviceActive) != 0) return device.DeviceID;
+            firstAttached ??= device.DeviceID;
+        }
+        return firstAttached;
+    }
 
     private sealed class EnumContext
     {
@@ -219,6 +268,9 @@ internal sealed unsafe class NativeMonitorApi : IMonitorNativeApi
     private static partial class NativeMethods
     {
         internal const uint MonitorDefaultToNearest = 2;
+        internal const uint MonitorInfoPrimary = 0x00000001;
+        internal const uint EddGetDeviceInterfaceName = 0x00000001;
+        internal const uint DisplayDeviceActive = 0x00000001;
 
         [StructLayout(LayoutKind.Sequential)]
         internal struct RECT
@@ -257,6 +309,29 @@ internal sealed unsafe class NativeMonitorApi : IMonitorNativeApi
         [DllImport("user32.dll", EntryPoint = "GetMonitorInfoW", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         internal static extern bool GetMonitorInfo(nint monitor, ref MONITORINFOEX info);
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        internal struct DISPLAY_DEVICE
+        {
+            internal uint Cb;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+            internal string DeviceName;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
+            internal string DeviceString;
+            internal uint StateFlags;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
+            internal string DeviceID;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
+            internal string DeviceKey;
+        }
+
+        [DllImport("user32.dll", EntryPoint = "EnumDisplayDevicesW", CharSet = CharSet.Unicode)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool EnumDisplayDevices(
+            string deviceName,
+            uint deviceIndex,
+            ref DISPLAY_DEVICE displayDevice,
+            uint flags);
 
         [DllImport("user32.dll", EntryPoint = "MonitorFromWindow")]
         internal static extern nint MonitorFromWindow(nint window, uint flags);

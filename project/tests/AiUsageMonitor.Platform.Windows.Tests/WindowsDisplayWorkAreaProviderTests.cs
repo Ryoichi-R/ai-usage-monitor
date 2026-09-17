@@ -74,5 +74,7 @@ public sealed class WindowsDisplayWorkAreaProviderTests
         public nint MonitorFromWindow(nint windowHandle) => Info.Handle;
 
         public nint MonitorFromPoint(int x, int y) => Info.Handle;
+
+        public string? GetStableId(string deviceName) => null;
     }
 }

@@ -9,6 +9,7 @@ using AiUsageMonitor.Claude.Configuration;
 using AiUsageMonitor.Core.Settings;
 using AiUsageMonitor.Core.Presentation;
 using AiUsageMonitor.Core.Usage;
+using AiUsageMonitor.Platform.Windows.Window;
 using Controls = System.Windows.Controls;
 using Forms = System.Windows.Forms;
 
@@ -47,9 +48,15 @@ public partial class SettingsWindow : Window
         _claudeStatusProvider = claudeStatusProvider;
         _claudeSourceProvider = claudeSourceProvider;
         _claudeHealthProvider = claudeHealthProvider;
-        MonitorBox.Items.Add(new MonitorChoice(null, "自動（プライマリ）"));
-        foreach (Forms.Screen screen in Forms.Screen.AllScreens) MonitorBox.Items.Add(new MonitorChoice(screen.DeviceName, screen.DeviceName + (screen.Primary ? "（プライマリ）" : string.Empty)));
-        SelectMonitor(settings.MonitorDeviceName);
+        MonitorBox.Items.Add(MonitorChoice.Automatic);
+        foreach (Forms.Screen screen in Forms.Screen.AllScreens)
+        {
+            MonitorBox.Items.Add(MonitorChoice.ForScreen(
+                screen.DeviceName,
+                NativeMonitorApi.Instance.GetStableId(screen.DeviceName),
+                screen.Primary));
+        }
+        SelectMonitor(settings.MonitorDeviceName, settings.MonitorStableId);
         AnchorBox.ItemsSource = new[]
         {
             new AnchorChoice(PlacementAnchor.TopRight, "右上"),
@@ -173,7 +180,7 @@ public partial class SettingsWindow : Window
         _settings = PlacementSettingsComposer.UseCapturedPosition(ReadControlsLenient(_settings), captured);
         SetPlacementMode(PlacementMode.Custom);
         _suppressPlacementModeChange = true;
-        SelectMonitor(captured.MonitorDeviceName);
+        SelectMonitor(captured.MonitorDeviceName, captured.MonitorStableId);
         _suppressPlacementModeChange = false;
     }
 
@@ -183,6 +190,7 @@ public partial class SettingsWindow : Window
         _settings = PlacementSettingsComposer.UsePreset(ReadControlsLenient(_settings) with
         {
             MonitorDeviceName = null,
+            MonitorStableId = null,
             Anchor = PlacementAnchor.TopRight,
             HorizontalMarginDip = 12,
             VerticalMarginDip = 12,
@@ -216,6 +224,7 @@ public partial class SettingsWindow : Window
                 ? displayMode.Value
                 : WidgetDisplayMode.Standard,
             MonitorDeviceName = (MonitorBox.SelectedItem as MonitorChoice)?.DeviceName,
+            MonitorStableId = (MonitorBox.SelectedItem as MonitorChoice)?.StableId,
             Anchor = AnchorBox.SelectedItem is AnchorChoice anchor ? anchor.Value : PlacementAnchor.TopRight,
             HorizontalMarginDip = horizontalMargin,
             VerticalMarginDip = verticalMargin,
@@ -267,6 +276,7 @@ public partial class SettingsWindow : Window
             ? displayMode.Value
             : WidgetDisplayMode.Standard,
         MonitorDeviceName = (MonitorBox.SelectedItem as MonitorChoice)?.DeviceName,
+        MonitorStableId = (MonitorBox.SelectedItem as MonitorChoice)?.StableId,
         Anchor = AnchorBox.SelectedItem is AnchorChoice anchor ? anchor.Value : PlacementAnchor.TopRight,
         HorizontalMarginDip = ParseDoubleOrFallback(HorizontalMarginBox.Text, basis.HorizontalMarginDip),
         VerticalMarginDip = ParseDoubleOrFallback(VerticalMarginBox.Text, basis.VerticalMarginDip),
@@ -594,14 +604,15 @@ public partial class SettingsWindow : Window
             : "保存済みの自由配置位置を使用します。";
     }
 
-    private void SelectMonitor(string? deviceName)
+    private void SelectMonitor(string? deviceName, string? stableId)
     {
-        MonitorBox.SelectedItem = MonitorBox.Items
+        MonitorChoice[] connected = MonitorBox.Items
             .Cast<MonitorChoice>()
-            .FirstOrDefault(item => string.Equals(
-                item.DeviceName,
-                deviceName,
-                StringComparison.OrdinalIgnoreCase)) ?? MonitorBox.Items[0];
+            .Where(item => item != MonitorChoice.Automatic && !item.IsDisconnected)
+            .ToArray();
+        MonitorChoice choice = MonitorChoice.Select(connected, deviceName, stableId);
+        if (!MonitorBox.Items.Contains(choice)) MonitorBox.Items.Add(choice);
+        MonitorBox.SelectedItem = choice;
     }
 
     private void SelectAnchor(PlacementAnchor anchor)
@@ -632,11 +643,6 @@ public partial class SettingsWindow : Window
             out int parsed)
             ? parsed
             : fallback;
-    }
-
-    private sealed record MonitorChoice(string? DeviceName, string DisplayName)
-    {
-        public override string ToString() => DisplayName;
     }
 
     private sealed record AnchorChoice(PlacementAnchor Value, string DisplayName)

@@ -12,6 +12,7 @@ public static class PlacementSettingsComposer
     public static AppSettings UseCapturedPosition(AppSettings settings, AppSettings capturedPosition) => settings with
     {
         MonitorDeviceName = capturedPosition.MonitorDeviceName,
+        MonitorStableId = capturedPosition.MonitorStableId,
         PlacementMode = PlacementMode.Custom,
         CustomLeftFraction = capturedPosition.CustomLeftFraction,
         CustomTopFraction = capturedPosition.CustomTopFraction,

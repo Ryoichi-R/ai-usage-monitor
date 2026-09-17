@@ -567,6 +567,7 @@ public partial class MainWindow : Window
             ? _displayWorkAreaProvider.TryGetForDrag(handle, center, out workArea, out resolution)
             : _displayWorkAreaProvider.TryGetCurrent(
                 Settings.MonitorDeviceName,
+                Settings.MonitorStableId,
                 handle,
                 center,
                 out workArea,
@@ -610,6 +611,7 @@ public partial class MainWindow : Window
         return Settings with
         {
             MonitorDeviceName = captured.DeviceName,
+            MonitorStableId = captured.StableId,
             PlacementMode = PlacementMode.Custom,
             CustomLeftFraction = captured.LeftFraction,
             CustomTopFraction = captured.TopFraction,
