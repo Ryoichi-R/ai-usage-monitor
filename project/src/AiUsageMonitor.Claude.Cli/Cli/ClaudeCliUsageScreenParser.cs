@@ -102,6 +102,7 @@ public static partial class ClaudeCliUsageScreenParser
         var percentages = new List<double>();
         DateTimeOffset? reset = null;
         int resetCount = 0;
+        int contentLineCount = 0;
         string? resetFailureReason = null;
         UsageResetDiagnostic? resetDiagnostic = null;
         for (int index = start + 1; index < end; index++)
@@ -132,6 +133,8 @@ public static partial class ClaudeCliUsageScreenParser
                 observedAt,
                 expectedDurationMinutes,
                 localTimeZone);
+            if (!string.IsNullOrWhiteSpace(line))
+                contentLineCount++;
             if (resetResult.Matched && resetResult.Success)
             {
                 reset = resetResult.Reset;
@@ -144,7 +147,16 @@ public static partial class ClaudeCliUsageScreenParser
             }
         }
 
-        return percentages.Count == 1 && resetCount == 1
+        // CLI 2.1.274 can omit the session reset row when it displays zero usage.
+        // Preserve the missing timestamp rather than inventing a reset. Only the
+        // zero-only session section, closed by the weekly heading, is accepted;
+        // missing/invalid weekly data and malformed reset rows still fail closed.
+        bool zeroSessionWithoutReset =
+            expectedDurationMinutes == UsageWindowPolicy.FiveHourDurationMinutes &&
+            end < lines.Count &&
+            percentages.Count == 1 && percentages[0] == 0 &&
+            resetCount == 0 && resetFailureReason is null && contentLineCount == 1;
+        return percentages.Count == 1 && (resetCount == 1 || zeroSessionWithoutReset)
             ? new(true, percentages[0], reset, null, null)
             : new(false, 0, null, resetFailureReason, resetDiagnostic);
     }

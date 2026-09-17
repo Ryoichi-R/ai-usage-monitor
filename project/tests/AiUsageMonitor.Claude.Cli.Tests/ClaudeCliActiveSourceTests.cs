@@ -50,6 +50,23 @@ public sealed class ClaudeCliActiveSourceTests
     }
 
     [Fact]
+    public async Task RefreshAsyncAcceptsZeroSessionWithoutResetAfterReady()
+    {
+        string[] lines = UsageScreen(sessionPercent: 0)
+            .Where((_, index) => index != 2).ToArray();
+        var session = new FakeClaudeScreenSession(ScreenOf(ReadyScreen), ScreenOf(lines));
+        ClaudeCliActiveSource source = CreateSource(session: session);
+
+        ClaudeUsageObservation observation = await source.RefreshAsync(CancellationToken.None);
+
+        Assert.Equal(UsageAvailability.Available, observation.Availability);
+        Assert.Equal(ClaudeUsageSourceKind.CliScreen, observation.Source);
+        Assert.Null(observation.Snapshot.Windows[0].ResetsAt);
+        Assert.Equal([0d, 32d], observation.Snapshot.Windows.Select(window => window.UsedPercent));
+        Assert.Single(session.Calls, call => call.Command == "usage");
+    }
+
+    [Fact]
     public async Task RefreshAsyncMapsTrustPromptToSetup()
     {
         var session = new FakeClaudeScreenSession(ScreenOf(["Is this a project you created or one you trust?"]));

@@ -489,6 +489,68 @@ public sealed class ClaudeCliUsageScreenParserTests
         Assert.Equal("USAGE_SCREEN_PARSE_FAILED", result.Reason);
     }
 
+    [Fact]
+    public void ZeroSessionWithoutResetKeepsUnknownTimestampAndParsesWeeklyWindow()
+    {
+        string[] lines =
+        [
+            "Current session",
+            "0% 0% used",
+            "Current week (all models)",
+            "32% 32% used",
+            "Resets Jul 30, 1pm (Asia/Tokyo)",
+            "Usage credits",
+            "19% 19% used",
+            "Esc to cancel",
+        ];
+
+        UsageSnapshot result = ClaudeCliUsageScreenParser.Parse(lines, ObservedAt, "2.1.274");
+
+        Assert.Equal(UsageAvailability.Available, result.Availability);
+        Assert.Equal([0d, 32d], result.Windows.Select(window => window.UsedPercent));
+        Assert.Null(result.Windows[0].ResetsAt);
+        Assert.NotNull(result.Windows[1].ResetsAt);
+    }
+
+    [Theory]
+    [InlineData("1% used", "")]
+    [InlineData("0% used", "Resets tomorrow at 2pm")]
+    [InlineData("0% used", "Loading usage...")]
+    [InlineData("0% used", "0% used")]
+    [InlineData("0% used", "1% 2% used")]
+    [InlineData("0% used", "101% used")]
+    [InlineData("", "")]
+    public void MissingSessionResetDoesNotPermitNonzeroAmbiguousOrMalformedData(
+        string percentage, string extraLine)
+    {
+        string[] lines =
+        [
+            "Current session", percentage, extraLine,
+            "Current week (all models)", "32% used",
+            "Resets Jul 30, 1pm (Asia/Tokyo)", "Esc to cancel",
+        ];
+
+        UsageSnapshot result = ClaudeCliUsageScreenParser.Parse(lines, ObservedAt, "2.1.274");
+
+        Assert.Equal(UsageAvailability.Error, result.Availability);
+        Assert.Empty(result.Windows);
+    }
+
+    [Fact]
+    public void ZeroSessionDoesNotPermitMissingWeeklyReset()
+    {
+        string[] lines =
+        [
+            "Current session", "0% used",
+            "Current week (all models)", "0% used", "Esc to cancel",
+        ];
+
+        UsageSnapshot result = ClaudeCliUsageScreenParser.Parse(lines, ObservedAt, "2.1.274");
+
+        Assert.Equal(UsageAvailability.Error, result.Availability);
+        Assert.Empty(result.Windows);
+    }
+
     private const int ClaudeConsoleHelperMaximumHeight = 120;
 
     private static UsageSnapshot ParseWithSessionReset(
