@@ -1,0 +1,11 @@
+<Project>
+  <!--
+    D14: Avalonia's build-time telemetry (Avalonia.BuildServices) runs only while
+    UsedAvaloniaProducts is non-empty. Avalonia.props appends to it early in evaluation;
+    Directory.Build.targets is imported after all package props, so clearing it here disables
+    the telemetry task for every build without relying on AVALONIA_TELEMETRY_OPTOUT.
+  -->
+  <PropertyGroup>
+    <UsedAvaloniaProducts></UsedAvaloniaProducts>
+  </PropertyGroup>
+</Project>

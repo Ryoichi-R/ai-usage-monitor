@@ -95,6 +95,10 @@ $env:AI_USAGE_MONITOR_TEST_ARTIFACTS_ROOT = $testOutput.ArtifactsPath
             Project = Join-Path $PSScriptRoot '..\tests\AiUsageMonitor.Platform.Windows.Tests\AiUsageMonitor.Platform.Windows.Tests.csproj'
         },
         [pscustomobject]@{
+            Package = 'AiUsageMonitor.App.UI'
+            Project = Join-Path $PSScriptRoot '..\tests\AiUsageMonitor.App.UI.Tests\AiUsageMonitor.App.UI.Tests.csproj'
+        },
+        [pscustomobject]@{
             Package = 'AiUsageMonitor.App'
             Project = Join-Path $PSScriptRoot '..\tests\AiUsageMonitor.App.Tests\AiUsageMonitor.App.Tests.csproj'
         },
@@ -108,10 +112,8 @@ $env:AI_USAGE_MONITOR_TEST_ARTIFACTS_ROOT = $testOutput.ArtifactsPath
     # 母集団から意図せず外れたproduction assemblyがあると、閾値を満たしていても実際には
     # 未検証のコードが混ざる。src配下の実在プロジェクトとcoverageTargetsを突き合わせ、
     # どちらにも属さないものが現れた時点で失敗させる。除外は理由付きでここに明示する。
-    $intentionallyUncoveredPackages = [ordered]@{
-        # D9の参照方向を先に固定するための器。Phase 1時点で計測対象の実装を持たない。
-        'AiUsageMonitor.App.UI' = 'Holds no implementation until the Phase 2 Avalonia port.'
-    }
+    # Phase 2でApp.UIが実装を持ったため、現在は除外対象なし。
+    $intentionallyUncoveredPackages = [ordered]@{}
     $productionPackages = @(
         Get-ChildItem -Path (Join-Path $projectRoot 'src') -Directory |
             Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName "$($_.Name).csproj") } |

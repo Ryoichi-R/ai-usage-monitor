@@ -16,6 +16,7 @@
     <Project Path="src/AiUsageMonitor.App.UI/AiUsageMonitor.App.UI.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/AiUsageMonitor.App.UI.Tests/AiUsageMonitor.App.UI.Tests.csproj" />
     <Project Path="tests/AiUsageMonitor.Claude.Cli.Tests/AiUsageMonitor.Claude.Cli.Tests.csproj" />
     <Project Path="tests/AiUsageMonitor.Claude.Tests/AiUsageMonitor.Claude.Tests.csproj" />
     <Project Path="tests/AiUsageMonitor.Codex.Tests/AiUsageMonitor.Codex.Tests.csproj" />

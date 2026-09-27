@@ -12,8 +12,12 @@
     OS非依存のプロジェクトだけであり、Platform.Windows / Claude.Windows / 旧WPF App を
     参照してはならない。この制約は scripts/test-build-contract.ps1 で機械的に検証する。
 
-    Phase 1時点では実装を持たない。Avalonia UIと共通composition部品はPhase 2で追加する。
+    Phase 2でAvalonia UIと共通composition部品を追加する（D14: Avalonia 12.1.2）。
   -->
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.2" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\AiUsageMonitor.Core\AiUsageMonitor.Core.csproj" />
     <ProjectReference Include="..\AiUsageMonitor.Claude\AiUsageMonitor.Claude.csproj" />
