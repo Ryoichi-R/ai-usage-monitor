@@ -337,6 +337,161 @@ public sealed class SettingsWindowTests
         });
     }
 
+    [Fact]
+    public void SettingsWindow_CaptureAndResetPlacementPreserveEditedFields()
+    {
+        RunInSta(() =>
+        {
+            AppSettings current = new AppSettings().Normalized();
+            AppSettings captured = current with
+            {
+                PlacementMode = PlacementMode.Custom,
+                CustomLeftFraction = 0.25,
+                CustomTopFraction = 0.35,
+            };
+            var window = new SettingsWindow(current, () => captured);
+            window.Show();
+            try
+            {
+                window.ScaleBox.Text = "125";
+                window.RefreshBox.Text = "180";
+                InvokeHandler(window, "SaveCurrentPosition");
+                Assert.Equal(PlacementMode.Custom, window.Result.PlacementMode);
+                Assert.Equal(0.25, window.Result.CustomLeftFraction);
+                Assert.Equal(125, window.Result.UiScalePercent);
+                Assert.Equal(180, window.Result.RefreshIntervalSeconds);
+
+                InvokeHandler(window, "ResetPosition");
+                Assert.Equal(PlacementMode.Preset, window.Result.PlacementMode);
+                Assert.Equal(PlacementAnchor.TopRight, window.Result.Anchor);
+                Assert.Equal("12", window.HorizontalMarginBox.Text);
+                Assert.Equal(125, window.Result.UiScalePercent);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void SettingsWindow_AddedAccountCanBeRemovedButDefaultCannot()
+    {
+        RunInSta(() =>
+        {
+            var window = CreateWindow();
+            window.Show();
+            try
+            {
+                int initial = window.CodexAccountsGrid.Items.Count;
+                InvokeHandler(window, "AddCodexAccount");
+                Assert.Equal(initial + 1, window.CodexAccountsGrid.Items.Count);
+                InvokeHandler(window, "RemoveCodexAccount");
+                Assert.Equal(initial, window.CodexAccountsGrid.Items.Count);
+
+                window.CodexAccountsGrid.SelectedIndex = 0;
+                InvokeHandler(window, "RemoveCodexAccount");
+                Assert.Equal(initial, window.CodexAccountsGrid.Items.Count);
+                Assert.Contains("削除できません", window.ValidationMessage.Text, StringComparison.Ordinal);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Theory]
+    [InlineData("FontFamilyBox", "bad\nfont", "フォント")]
+    [InlineData("ForegroundColorBox", "red", "色")]
+    [InlineData("MutedColorBox", "#GGGGGG", "色")]
+    [InlineData("AccentColorBox", "#12345", "色")]
+    [InlineData("WarningColorBox", "invalid", "色")]
+    [InlineData("DangerColorBox", "invalid", "色")]
+    [InlineData("BackgroundColorBox", "invalid", "色")]
+    public void SettingsWindow_InvalidAppearanceSelectsAppearanceTabAndExplainsField(
+        string fieldName,
+        string value,
+        string message)
+    {
+        RunInSta(() =>
+        {
+            var window = CreateWindow();
+            Assert.IsType<TextBox>(window.FindName(fieldName)).Text = value;
+            window.Loaded += (_, _) =>
+            {
+                window.SaveButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Assert.Equal(2, window.CategoryTabs.SelectedIndex);
+                Assert.Contains(message, window.ValidationMessage.Text, StringComparison.Ordinal);
+                window.Close();
+            };
+            Assert.NotEqual(true, window.ShowDialog());
+        });
+    }
+
+    [Fact]
+    public void SettingsWindow_DefaultAccountHomeCannotBeSelected()
+    {
+        RunInSta(() =>
+        {
+            var window = CreateWindow();
+            window.Show();
+            try
+            {
+                window.CodexAccountsGrid.SelectedIndex = 0;
+                InvokeHandler(window, "SelectCodexHome");
+                Assert.Contains("継承", window.ValidationMessage.Text, StringComparison.Ordinal);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+    [Theory]
+    [InlineData("#123456", 0x12, 0x34, 0x56)]
+    [InlineData("#AA123456", 0x12, 0x34, 0x56)]
+    public void ColorPickerConvertsConfiguredColorToOpaqueDialogColor(
+        string configured,
+        int red,
+        int green,
+        int blue)
+    {
+        var method = typeof(SettingsWindow).GetMethod("TryGetDrawingColor",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        Assert.NotNull(method);
+        var color = Assert.IsType<System.Drawing.Color>(method.Invoke(null, [configured]));
+        Assert.Equal(System.Drawing.Color.FromArgb(red, green, blue), color);
+        Assert.Null(method.Invoke(null, ["invalid"]));
+    }
+    [Fact]
+    public void SettingsWindow_AsksForAccountBeforeSelectingCodexHome()
+    {
+        RunInSta(() =>
+        {
+            var window = CreateWindow();
+            window.Show();
+            try
+            {
+                window.CodexAccountsGrid.SelectedItem = null;
+                InvokeHandler(window, "SelectCodexHome");
+                Assert.Contains("選択してください", window.ValidationMessage.Text,
+                    StringComparison.Ordinal);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+    private static void InvokeHandler(SettingsWindow window, string name)
+    {
+        var handler = typeof(SettingsWindow).GetMethod(
+            name,
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        Assert.NotNull(handler);
+        handler.Invoke(window, [window, new RoutedEventArgs()]);
+    }
     private static SettingsWindow CreateWindow(AppSettings? settings = null)
     {
         AppSettings current = (settings ?? new AppSettings()).Normalized();

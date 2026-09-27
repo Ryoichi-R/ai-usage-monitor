@@ -47,15 +47,37 @@ public partial class App : System.Windows.Application
     private ClaudeSetupWindow? _claudeSetupWindow;
     // Phase 1時点でこのhostはWindows専用のため具象型で保持する。抽象境界は
     // ClaudeWorkspaceProvisionerがIAppPathProviderを受け取る点で成立している。
-    private static readonly WindowsAppPathProvider AppPaths = new();
-    private readonly ClaudeUsageRuntime _claudeRuntime = new(configuration =>
-        new ClaudeCliActiveSource(
-            configuration.ExecutablePath,
-            configuration.BridgePath,
-            configuration.StartupTimeout,
-            new ClaudeWorkspaceProvisioner(AppPaths),
-            new WindowsClaudeScreenSessionFactory(),
-            new ClaudeExecutableLocator()));
+    private readonly WindowsAppPathProvider _appPaths;
+    private readonly string _mutexName;
+    private readonly string _activationEventName;
+    private readonly ClaudeUsageRuntime _claudeRuntime;
+    private readonly Func<TrayController> _trayFactory;
+    private readonly Action<bool> _applyStartupSetting;
+    private readonly bool _startPassiveListener;
+    internal event Action? StartupCompleted;
+    internal event Action<Exception>? StartupFailed;
+
+    public App() : this(new WindowsAppPathProvider(), LegacyMutexName, ActivationEventName) { }
+
+    internal App(WindowsAppPathProvider appPaths, string mutexName, string activationEventName, Func<TrayController>? trayFactory = null, Action<bool>? applyStartupSetting = null,
+        Func<ClaudeActiveSourceConfiguration, IClaudeUsageSource>? claudeSourceFactory = null,
+        bool startPassiveListener = true)
+    {
+        _appPaths = appPaths ?? throw new ArgumentNullException(nameof(appPaths));
+        _trayFactory = trayFactory ?? (() => new TrayController());
+        _applyStartupSetting = applyStartupSetting ?? StartupRegistryService.Apply;
+        _startPassiveListener = startPassiveListener;
+        _mutexName = !string.IsNullOrWhiteSpace(mutexName) ? mutexName : throw new ArgumentException("Mutex name is required.", nameof(mutexName));
+        _activationEventName = !string.IsNullOrWhiteSpace(activationEventName) ? activationEventName : throw new ArgumentException("Activation event name is required.", nameof(activationEventName));
+        _claudeRuntime = new(claudeSourceFactory ?? (configuration =>
+            new ClaudeCliActiveSource(
+                configuration.ExecutablePath,
+                configuration.BridgePath,
+                configuration.StartupTimeout,
+                new ClaudeWorkspaceProvisioner(_appPaths),
+                new WindowsClaudeScreenSessionFactory(),
+                new ClaudeExecutableLocator())));
+    }
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -65,16 +87,16 @@ public partial class App : System.Windows.Application
             Shutdown(0);
             return;
         }
-        _mutex = new Mutex(true, LegacyMutexName, out bool first);
+        _mutex = new Mutex(true, _mutexName, out bool first);
         if (!first)
         {
             // 常駐中のインスタンスへウィジェットの再表示を依頼してから終了する。
-            WindowsInstanceActivationChannel.TrySignal(ActivationEventName);
+            WindowsInstanceActivationChannel.TrySignal(_activationEventName);
             Shutdown();
             return;
         }
         _activationChannel = WindowsInstanceActivationChannel.Listen(
-            ActivationEventName,
+            _activationEventName,
             () => Dispatcher.BeginInvoke(OnActivationRequested));
         // 起動処理は多数の外部リソース（設定file、レジストリ、Codex/Claude起動）に触れる。
         // ここで想定外の例外が漏れるとasync void経由で無表示のままクラッシュするため、
@@ -82,7 +104,7 @@ public partial class App : System.Windows.Application
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         try
         {
-            string settingsPath = AppPaths.SettingsFilePath;
+            string settingsPath = _appPaths.SettingsFilePath;
             bool isFirstRun = !File.Exists(settingsPath);
             _store = new FileSystemSettingsStore(settingsPath);
             _settings = await _store.LoadAsync();
@@ -96,7 +118,7 @@ public partial class App : System.Windows.Application
             _backgroundCoordinator.Apply(_settings);
             _window.UserPositionChanged += async () => { _settings = _window.CaptureCustomPosition(); await _store.SaveAsync(_settings); };
             _window.Show();
-            _tray = new TrayController();
+            _tray = _trayFactory();
             _window.TopmostHealthChanged += degraded => _tray?.SetTopmostDegraded(degraded);
             _tray.SetTopmostDegraded(_window.IsTopmostDegraded);
             _tray.SetDisplayMode(_settings.DisplayMode);
@@ -117,9 +139,16 @@ public partial class App : System.Windows.Application
             _codexPollTask = _codexCoordinator.RunPeriodicPollingAsync(_lifetime.Token);
             _claudePollTask = PollClaudeAsync(_lifetime.Token);
             if (isFirstRun) await ShowFirstRunAsync();
+            StartupCompleted?.Invoke();
         }
         catch (Exception exception)
         {
+            if (StartupFailed is { } onFailed)
+            {
+                onFailed(exception);
+                Shutdown(1);
+                return;
+            }
             System.Windows.MessageBox.Show(
                 $"AI Usage Monitorを起動できませんでした。設定ファイルが壊れているか、必要なリソースにアクセスできない可能性があります。\n\n{exception.GetType().Name}: {exception.Message}",
                 "AI Usage Monitor",
@@ -405,7 +434,8 @@ public partial class App : System.Windows.Application
                 _claudeRuntime,
                 DateTimeOffset.UtcNow,
                 _lifetime.Token),
-            _settings.ClaudeExecutablePath)
+            _settings.ClaudeExecutablePath,
+            _appPaths)
         {
             Owner = System.Windows.Application.Current.Windows
                 .OfType<Window>()
@@ -428,7 +458,7 @@ public partial class App : System.Windows.Application
 
     private void ApplyStartupSetting()
     {
-        StartupRegistryService.Apply(_settings.StartWithWindows);
+        _applyStartupSetting(_settings.StartWithWindows);
     }
 
     private void ConfigureClaudeListener()
@@ -445,7 +475,7 @@ public partial class App : System.Windows.Application
                 DateTimeOffset.UtcNow,
                 _settings.RefreshIntervalSeconds);
             ApplyClaudeSnapshot(current);
-            if (_claudeServer is null)
+            if (_startPassiveListener && _claudeServer is null)
             {
                 _claudeServer = new ClaudeUsagePipeServer();
                 _claudeServer.ObservationReceived += observation =>

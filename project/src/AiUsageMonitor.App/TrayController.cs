@@ -20,15 +20,11 @@ public sealed class TrayController : IDisposable
     public event Action<WidgetDisplayMode>? DisplayModeRequested;
     public event Action? ExitRequested;
 
-    public TrayController()
+    public TrayController() : this(LoadTrayIcon()) { }
+
+    internal TrayController(Icon icon)
     {
-        System.Windows.Resources.StreamResourceInfo resource = System.Windows.Application.GetResourceStream(
-            new Uri("pack://application:,,,/Assets/ai-usage-monitor.ico"));
-        using (Stream stream = resource.Stream)
-        using (var sourceIcon = new Icon(stream))
-        {
-            _trayIcon = (Icon)sourceIcon.Clone();
-        }
+        _trayIcon = icon ?? throw new ArgumentNullException(nameof(icon));
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("Claude Code連携…", null, (_, _) => ClaudeSetupRequested?.Invoke());
         menu.Items.Add(new Forms.ToolStripSeparator());
@@ -55,6 +51,15 @@ public sealed class TrayController : IDisposable
         _icon.DoubleClick += (_, _) => SettingsRequested?.Invoke();
         SetDisplayMode(WidgetDisplayMode.Standard);
     }
+
+    private static Icon LoadTrayIcon()
+    {
+        System.Windows.Resources.StreamResourceInfo resource = System.Windows.Application.GetResourceStream(
+            new Uri("pack://application:,,,/Assets/ai-usage-monitor.ico"));
+        using Stream stream = resource.Stream;
+        return new Icon(stream);
+    }
+
     public void Dispose()
     {
         _icon.Visible = false;

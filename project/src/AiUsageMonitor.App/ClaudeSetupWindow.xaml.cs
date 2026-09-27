@@ -6,6 +6,7 @@ using AiUsageMonitor.Claude.Windows.Process;
 using AiUsageMonitor.Core.Usage;
 using AiUsageMonitor.Core.Presentation;
 using AiUsageMonitor.Platform.Windows;
+using AiUsageMonitor.Platform;
 
 namespace AiUsageMonitor.App;
 
@@ -23,11 +24,18 @@ public partial class ClaudeSetupWindow : Window
         Func<UsageSnapshot> statusProvider,
         Func<Task<UsageSnapshot>>? refresh = null,
         string? executablePath = null)
+        : this(statusProvider, refresh, executablePath, new WindowsAppPathProvider()) { }
+
+    internal ClaudeSetupWindow(
+        Func<UsageSnapshot> statusProvider,
+        Func<Task<UsageSnapshot>>? refresh,
+        string? executablePath,
+        IAppPathProvider appPaths)
     {
         InitializeComponent();
         _statusProvider = statusProvider;
         _refresh = refresh;
-        var workspace = new ClaudeWorkspaceProvisioner(new WindowsAppPathProvider());
+        var workspace = new ClaudeWorkspaceProvisioner(appPaths);
         _settingsFolder = workspace.EnsureWorkspace();
         SettingsFolderBox.Text = _settingsFolder;
         string command = string.IsNullOrWhiteSpace(executablePath) ? "claude" : executablePath;

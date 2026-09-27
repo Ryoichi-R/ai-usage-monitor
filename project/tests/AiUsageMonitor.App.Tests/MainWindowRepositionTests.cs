@@ -351,6 +351,33 @@ public sealed class MainWindowRepositionTests
         });
     }
 
+    [Fact]
+    public void DisplayTopologyPollReadsCurrentMonitorAndSettlesPlacement()
+    {
+        MainWindowScaleTestSupport.RunInSta(() =>
+        {
+            var window = ShowWindow(out _);
+            try
+            {
+                var queue = typeof(MainWindow).GetMethod("QueueDisplayTopologyPoll",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                Assert.NotNull(queue);
+                queue.Invoke(window, null);
+                Drain(window);
+                window.DrainPendingPlacementForTest();
+
+                var snapshot = typeof(MainWindow).GetField("_lastPolledMonitorSnapshot",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+                Assert.NotNull(snapshot);
+                Assert.NotNull(snapshot.GetValue(window));
+                Assert.False(window.HasPendingPlacementForTest);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
     private static MainWindow ShowWindow(out MainWindow created)
     {
         var window = new MainWindow { DataContext = MainWindowScaleTestSupport.CreateMaxDisplayViewModel() };

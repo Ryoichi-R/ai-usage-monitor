@@ -33,7 +33,7 @@ if not "%~2"=="" (
 if "%~1"=="" (
   pwsh.exe -STA -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\rebuild-ai-usage-monitor.ps1" -Runtime win-arm64 -SelectOutputRoot -RevealOutput
 ) else (
-  pwsh.exe -STA -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\rebuild-ai-usage-monitor.ps1" -Runtime win-arm64 -OutputRoot "%~f1" -RevealOutput
+  pwsh.exe -STA -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\rebuild-ai-usage-monitor.ps1" -Runtime win-arm64 -OutputRoot "%~f1\." -RevealOutput
 )
 set "EXIT_CODE=%ERRORLEVEL%"
 

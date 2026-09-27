@@ -93,6 +93,15 @@ $env:AI_USAGE_MONITOR_TEST_ARTIFACTS_ROOT = $testOutput.ArtifactsPath
         [pscustomobject]@{
             Package = 'AiUsageMonitor.Platform.Windows'
             Project = Join-Path $PSScriptRoot '..\tests\AiUsageMonitor.Platform.Windows.Tests\AiUsageMonitor.Platform.Windows.Tests.csproj'
+        },
+        [pscustomobject]@{
+            Package = 'AiUsageMonitor.App'
+            Project = Join-Path $PSScriptRoot '..\tests\AiUsageMonitor.App.Tests\AiUsageMonitor.App.Tests.csproj'
+        },
+        [pscustomobject]@{
+            Package = 'AiUsageMonitor.App'
+            ResultName = 'AiUsageMonitor.App.Startup'
+            Project = Join-Path $PSScriptRoot '..\tests\AiUsageMonitor.App.Startup.Tests\AiUsageMonitor.App.Startup.Tests.csproj'
         }
     )
 
@@ -100,8 +109,6 @@ $env:AI_USAGE_MONITOR_TEST_ARTIFACTS_ROOT = $testOutput.ArtifactsPath
     # 未検証のコードが混ざる。src配下の実在プロジェクトとcoverageTargetsを突き合わせ、
     # どちらにも属さないものが現れた時点で失敗させる。除外は理由付きでここに明示する。
     $intentionallyUncoveredPackages = [ordered]@{
-        # WPF UI。Phase 2でAvaloniaへ移植し、App.Windows / App.UIとして母集団へ入れる。
-        'AiUsageMonitor.App'    = 'WPF UI is verified by App.Tests and manual acceptance until the Phase 2 Avalonia port.'
         # D9の参照方向を先に固定するための器。Phase 1時点で計測対象の実装を持たない。
         'AiUsageMonitor.App.UI' = 'Holds no implementation until the Phase 2 Avalonia port.'
     }
@@ -110,7 +117,7 @@ $env:AI_USAGE_MONITOR_TEST_ARTIFACTS_ROOT = $testOutput.ArtifactsPath
             Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName "$($_.Name).csproj") } |
             ForEach-Object { $_.Name }
     )
-    $measuredPackages = @($coverageTargets | ForEach-Object { $_.Package })
+    $measuredPackages = @($coverageTargets | ForEach-Object { $_.Package } | Sort-Object -Unique)
     $unaccountedPackages = @(
         $productionPackages | Where-Object {
             $measuredPackages -notcontains $_ -and -not $intentionallyUncoveredPackages.Contains($_)
@@ -134,11 +141,12 @@ $env:AI_USAGE_MONITOR_TEST_ARTIFACTS_ROOT = $testOutput.ArtifactsPath
     dotnet restore $solution --nologo --artifacts-path $testOutput.ArtifactsPath @isolationProperties
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+    # Appの起動テストはWPF Applicationを終了するため別test hostに分離する。
     # 同じproduction assemblyを複数test hostから同時にinstrumentすると、Coverletが
-    # reportからmodule全体を不定に欠落させる。各packageを所有するtest projectごとに
-    # clean buildして単独計測し、依存packageの副次coverageは集計しない。
+    # reportからmodule全体を不定に欠落させる。各test projectをclean buildして単独計測し、
+    # 実sourceに解決できる行だけを全hostのreportからORで合算する。
     foreach ($target in $coverageTargets) {
-        $targetResultDirectory = Join-Path $testOutput.ResultsPath $target.Package
+        $targetResultDirectory = Join-Path $testOutput.ResultsPath $(if ($target.ResultName) { $target.ResultName } else { $target.Package })
         dotnet clean $target.Project -c Release --nologo --verbosity quiet --artifacts-path $testOutput.ArtifactsPath @isolationProperties
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         dotnet build $target.Project -c Release --no-restore --nologo --verbosity minimal --artifacts-path $testOutput.ArtifactsPath @isolationProperties
@@ -156,7 +164,7 @@ $env:AI_USAGE_MONITOR_TEST_ARTIFACTS_ROOT = $testOutput.ArtifactsPath
 
     $lineCoverage = @{}
     foreach ($target in $coverageTargets) {
-        $targetResultDirectory = Join-Path $testOutput.ResultsPath $target.Package
+        $targetResultDirectory = Join-Path $testOutput.ResultsPath $(if ($target.ResultName) { $target.ResultName } else { $target.Package })
         $targetReports = @(
             Get-ChildItem -Path $targetResultDirectory -Recurse -Filter 'coverage.cobertura.xml'
         )
@@ -165,8 +173,8 @@ $env:AI_USAGE_MONITOR_TEST_ARTIFACTS_ROOT = $testOutput.ArtifactsPath
             [xml]$coverage = Get-Content -Path $report.FullName -Raw
             foreach ($package in @($coverage.coverage.packages.package)) {
                 $packageName = [string]$package.name
-                if ($packageName -cne $target.Package) { continue }
-                $foundPackage = $true
+                if ($measuredPackages -cnotcontains $packageName) { continue }
+                if ($packageName -ceq $target.Package) { $foundPackage = $true }
             foreach ($class in @($package.classes.class)) {
                 $sourcePath = ([string]$class.filename).Replace('/', '\')
                 if ($sourcePath -match '(^|\\)(obj|bin)\\') {
@@ -174,15 +182,24 @@ $env:AI_USAGE_MONITOR_TEST_ARTIFACTS_ROOT = $testOutput.ArtifactsPath
                 }
 
                 $packagePrefix = $packageName.TrimEnd('\') + '\'
-                if (-not $sourcePath.StartsWith($packagePrefix, [StringComparison]::OrdinalIgnoreCase)) {
-                    # Coverletは実行時にロードされた依存production assembly（Core/Claude等）の
-                    # クラスも同じpackage要素の下に列挙することがある。それらは依存先自身の
-                    # coverageTargetエントリで計測されるため、ここではこのpackage自身の
-                    # productionプロジェクト配下のsourceだけを対象にする。
+                $srcMarker = '\src\' + $packagePrefix
+                $markerIndex = $sourcePath.IndexOf($srcMarker, [StringComparison]::OrdinalIgnoreCase)
+                if ($markerIndex -ge 0) {
+                    $sourcePath = $sourcePath.Substring($markerIndex + $srcMarker.Length)
+                }
+                elseif ($sourcePath.StartsWith($packagePrefix, [StringComparison]::OrdinalIgnoreCase)) {
+                    $sourcePath = $sourcePath.Substring($packagePrefix.Length)
+                }
+                # Coverlet uses three filename forms: repository path, package path, or
+                # package-relative path. Count a class only when its filename resolves to
+                # an actual source file in this production project.
+                $sourceFile = [IO.Path]::GetFullPath((Join-Path $projectRoot ("src\$packageName\$sourcePath")))
+                $sourceRoot = [IO.Path]::GetFullPath((Join-Path $projectRoot "src\$packageName"))
+                if (-not $sourceFile.StartsWith($sourceRoot + [IO.Path]::DirectorySeparatorChar,
+                        [StringComparison]::OrdinalIgnoreCase) -or
+                    -not (Test-Path -LiteralPath $sourceFile -PathType Leaf)) {
                     continue
                 }
-                $sourcePath = $sourcePath.Substring($packagePrefix.Length)
-
                 foreach ($line in @($class.lines.line)) {
                     $key = '{0}|{1}|{2}' -f $packageName, $sourcePath, $line.number
                     $hit = [int]$line.hits -gt 0
@@ -224,7 +241,7 @@ $env:AI_USAGE_MONITOR_TEST_ARTIFACTS_ROOT = $testOutput.ArtifactsPath
         )
     } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $manifestPath -Encoding utf8
 
-    "Coverage scope: $([string]::Join(', ', @($coverageTargets.Package | Sort-Object)))"
+    "Coverage scope: $([string]::Join(', ', $measuredPackages))"
     "Coverage: $percentage% ($covered/$valid lines)"
     "Excluded from the measured population: $([string]::Join(', ', @($intentionallyUncoveredPackages.Keys | Sort-Object)))"
     "Reports: $($testOutput.ResultsPath)"

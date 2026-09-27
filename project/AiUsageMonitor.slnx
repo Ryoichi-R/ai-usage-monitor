@@ -12,6 +12,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/AiUsageMonitor.App.Tests/AiUsageMonitor.App.Tests.csproj" />
+    <Project Path="tests/AiUsageMonitor.App.Startup.Tests/AiUsageMonitor.App.Startup.Tests.csproj" />
     <Project Path="tests/AiUsageMonitor.Claude.Cli.Tests/AiUsageMonitor.Claude.Cli.Tests.csproj" />
     <Project Path="tests/AiUsageMonitor.Claude.Tests/AiUsageMonitor.Claude.Tests.csproj" />
     <Project Path="tests/AiUsageMonitor.Claude.Windows.Tests/AiUsageMonitor.Claude.Windows.Tests.csproj" />

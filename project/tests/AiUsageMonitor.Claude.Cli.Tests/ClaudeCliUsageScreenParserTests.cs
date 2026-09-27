@@ -97,6 +97,19 @@ public sealed class ClaudeCliUsageScreenParserTests
         Assert.Equal("USAGE_RESET_OUT_OF_RANGE", result.Reason);
     }
 
+    [Theory]
+    [InlineData("7月32日 13:00 にリセット", "USAGE_RESET_FORMAT_UNSUPPORTED")]
+    [InlineData("2月30日 13:00 にリセット", "USAGE_RESET_FORMAT_UNSUPPORTED")]
+    [InlineData("Resets 2pm (Asia/Tokyo", "USAGE_RESET_TIME_ZONE_UNSUPPORTED")]
+    [InlineData("Resets 2pm Asia/Tokyo)", "USAGE_RESET_TIME_ZONE_UNSUPPORTED")]
+    public void MalformedResetDateOrTimeZoneFailsClosed(string reset, string reason)
+    {
+        UsageSnapshot result = ParseWithSessionReset(reset);
+
+        Assert.Equal(UsageAvailability.Error, result.Availability);
+        Assert.Equal(reason, result.Reason);
+        Assert.Empty(result.Windows);
+    }
     [Fact]
     public void ParsesJapaneseMinutesOnlyReset()
     {

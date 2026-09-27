@@ -287,6 +287,29 @@ public sealed class MainWindowDisplayTests
         });
     }
 
+    [Fact]
+    public void ScrollGuidanceAppearsOnlyWhenClickThroughContentOverflows()
+    {
+        MainWindowScaleTestSupport.RunInSta(() =>
+        {
+            using var host = ShownWindow(new AppSettings { ClickThrough = true },
+                out MainWindow window, out _);
+            window.ContentScrollViewer.MaxHeight = 40;
+            window.UpdateLayout();
+            var update = typeof(MainWindow).GetMethod("UpdateScrollGuidance",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+            Assert.NotNull(update);
+            update.Invoke(window, null);
+
+            Assert.True(window.ContentScrollViewer.ExtentHeight >
+                window.ContentScrollViewer.ViewportHeight + .5);
+            Assert.Equal(Visibility.Visible, window.ScrollGuidanceText.Visibility);
+
+            window.ApplySettings(new AppSettings { ClickThrough = false }, reposition: false);
+            update.Invoke(window, null);
+            Assert.Equal(Visibility.Collapsed, window.ScrollGuidanceText.Visibility);
+        });
+    }
     private static WindowHost ShownWindow(double scalePercent, out MainWindow window, out Border root) =>
         ShownWindow(new AppSettings { UiScalePercent = scalePercent }, out window, out root);
 

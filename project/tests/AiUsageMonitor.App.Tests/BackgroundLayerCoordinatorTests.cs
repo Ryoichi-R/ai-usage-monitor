@@ -1,3 +1,4 @@
+using System.Windows;
 using AiUsageMonitor.Core.Presentation;
 using AiUsageMonitor.Core.Settings;
 
@@ -6,6 +7,83 @@ namespace AiUsageMonitor.App.Tests;
 [Trait("Category", "Interactive")]
 public sealed class BackgroundLayerCoordinatorTests
 {
+    [Fact]
+    public void InlineBackgroundAndVisibilityChangesDoNotOpenSeparateLayer()
+    {
+        MainWindowScaleTestSupport.RunInSta(() =>
+        {
+            var settings = new AppSettings
+            {
+                BackgroundEnabled = true,
+                HideBackgroundBehindWindows = false,
+                ClickThrough = false,
+            };
+            var main = new MainWindow
+            {
+                DataContext = MainWindowScaleTestSupport.CreateMaxDisplayViewModel(),
+            };
+            main.ApplySettings(settings, reposition: false);
+            main.Show();
+            using var coordinator = new BackgroundLayerCoordinator(main, main.Dispatcher);
+            try
+            {
+                coordinator.Apply(settings);
+                Assert.Equal(BackgroundPresentationMode.Inline, coordinator.Mode);
+                Assert.False(coordinator.BackgroundWindow.IsVisible);
+
+                coordinator.SetWidgetVisible(false);
+                Assert.False(main.IsVisible);
+                coordinator.SetWidgetVisible(true);
+                Assert.True(main.IsVisible);
+                coordinator.Reapply();
+                coordinator.SyncNow();
+                Assert.False(coordinator.BackgroundWindow.IsVisible);
+            }
+            finally
+            {
+                main.Close();
+            }
+        });
+    }
+    [Fact]
+    public void EdgeFadeBackgroundExpandsBeyondInformationBounds()
+    {
+        MainWindowScaleTestSupport.RunInSta(() =>
+        {
+            var settings = new AppSettings
+            {
+                BackgroundEnabled = true,
+                HideBackgroundBehindWindows = true,
+                AlwaysOnTop = true,
+                BackgroundFillMode = BackgroundFillMode.EdgeFade,
+                BackgroundEdgeFadePercent = 25,
+                ClickThrough = false,
+            };
+            var main = new MainWindow
+            {
+                DataContext = MainWindowScaleTestSupport.CreateMaxDisplayViewModel(),
+            };
+            main.ApplySettings(settings, reposition: false);
+            main.Show();
+            main.DrainPendingPlacementForTest();
+            using var coordinator = new BackgroundLayerCoordinator(main, main.Dispatcher);
+            try
+            {
+                coordinator.Apply(settings);
+                coordinator.SyncNow();
+                Rect information = main.GetInformationBoundsInScreenDip();
+                Assert.Equal(information.Left - information.Width * .25, coordinator.BackgroundWindow.Left, 1);
+                Assert.Equal(information.Top - information.Height * .25, coordinator.BackgroundWindow.Top, 1);
+                Assert.Equal(information.Width * 1.5, coordinator.BackgroundWindow.Width, 1);
+                Assert.Equal(information.Height * 1.5, coordinator.BackgroundWindow.Height, 1);
+            }
+            finally
+            {
+                main.Close();
+            }
+        });
+    }
+
     [Fact]
     public void SplitBackgroundWaitsForPlacementAndFallbackCanRevealIt()
     {

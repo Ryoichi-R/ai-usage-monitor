@@ -154,6 +154,59 @@ public sealed class OnboardingTests
         });
     }
 
+    [Theory]
+    [InlineData(UsageAvailability.Available, "現在の利用情報を取得できました。", true)]
+    [InlineData(UsageAvailability.Error, "取得できませんでした", false)]
+    public void ClaudeSetupWindow_ConnectionTestReportsResultAndSignalsSuccess(
+        UsageAvailability availability,
+        string expectedMessage,
+        bool expectedSuccess)
+    {
+        RunInSta(() =>
+        {
+            UsageSnapshot current = Snapshot(UsageAvailability.Setup);
+            UsageSnapshot result = Snapshot(availability);
+            var window = new ClaudeSetupWindow(
+                () => current,
+                () =>
+                {
+                    current = result;
+                    return Task.FromResult(result);
+                });
+            bool succeeded = false;
+            window.SetupSucceeded += () => succeeded = true;
+            try
+            {
+                window.TestConnectionButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Assert.Contains(expectedMessage, window.ActionMessageText.Text, StringComparison.Ordinal);
+                Assert.Equal(expectedSuccess, succeeded);
+                Assert.True(window.TestConnectionButton.IsEnabled);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
+    public void ClaudeSetupWindow_WithoutRefreshExplainsUnavailableTest()
+    {
+        RunInSta(() =>
+        {
+            var window = new ClaudeSetupWindow(() => Snapshot(UsageAvailability.Setup));
+            try
+            {
+                window.TestConnectionButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Assert.Contains("アプリ実行中", window.ActionMessageText.Text, StringComparison.Ordinal);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
     [Fact]
     public async Task ClaudeConnectionTest_StartsOfficialCliWhenOngoingModeIsStatusLineOnly()
     {
@@ -181,6 +234,47 @@ public sealed class OnboardingTests
         Assert.Equal(1, source.CallCount);
     }
 
+    [Fact]
+    public void ClaudeSetupWindow_ReportsCanceledConnectionTest()
+    {
+        RunInSta(() =>
+        {
+            var window = new ClaudeSetupWindow(
+                () => Snapshot(UsageAvailability.Setup),
+                () => Task.FromCanceled<UsageSnapshot>(new CancellationToken(true)));
+            try
+            {
+                window.TestConnectionButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Assert.Contains("キャンセル", window.ActionMessageText.Text, StringComparison.Ordinal);
+                Assert.True(window.TestConnectionButton.IsEnabled);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+    [Fact]
+    public void ReadmeSectionWindowShowsSectionAndExplainsMissingFullReadme()
+    {
+        RunInSta(() =>
+        {
+            string missing = Path.Combine(Path.GetTempPath(),
+                "ai-usage-monitor-missing-readme-" + Guid.NewGuid().ToString("N") + ".md");
+            var window = new ReadmeSectionWindow("テスト用の案内", missing);
+            try
+            {
+                Assert.Equal("テスト用の案内", window.ReadmeSectionBox.Text);
+                window.OpenFullReadmeButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Assert.Contains("開けませんでした", window.OpenReadmeMessageText.Text,
+                    StringComparison.Ordinal);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
     private static UsageSnapshot Snapshot(UsageAvailability availability) =>
         new(
             UsageProvider.Claude,
