@@ -15,7 +15,7 @@ namespace AiUsageMonitor.App.Mac.Tests;
 public sealed class MacCompositionTests
 {
     [AvaloniaFact]
-    public async Task ProductCompositionRequiresSupervisorAndKeepsClaudeUnavailable()
+    public async Task ProductCompositionRequiresSupervisedClaudeAndPassiveListener()
     {
         string root = Path.Combine(Path.GetTempPath(), "aiusage-composition-" + Guid.NewGuid().ToString("N"));
         try
@@ -25,10 +25,11 @@ public sealed class MacCompositionTests
             WidgetHostServices services = MacComposition.Create(paths, log);
             Assert.IsType<MacManagedProcessLauncher>(services.CodexProcessLauncher);
             Assert.Null(services.CodexLifetimeGuardFactory);
-            Assert.Null(services.CreateClaudeListener);
-            var source = services.ClaudeSourceFactory(new ClaudeActiveSourceConfiguration(null, "bridge", TimeSpan.FromSeconds(1)));
+            Assert.NotNull(services.CreateClaudeListener);
+            Assert.NotNull(services.ClaudeSetupExample);
+            var source = services.ClaudeSourceFactory(new ClaudeActiveSourceConfiguration(Path.Combine(root, "missing-claude"), "bridge", TimeSpan.FromSeconds(1)));
             var observation = await source.RefreshAsync(TestContext.Current.CancellationToken);
-            Assert.Equal(UsageAvailability.Unsupported, observation.Snapshot.Availability);
+            Assert.Equal(UsageAvailability.NotInstalled, observation.Snapshot.Availability);
             Assert.NotNull(services.StatusIcon);
             Assert.Same(paths, services.AppPaths);
             services.Diagnostic("test-code", new IOException("must-not-be-logged"));

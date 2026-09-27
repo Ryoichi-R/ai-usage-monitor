@@ -55,7 +55,7 @@ missing = sorted(set(projects) - seen)
 manifest = {
     "schema_version": "1.0", "os": "macos", "covered": covered, "valid": valid,
     "coverage_percent": round(percent, 2), "unmeasured_projects": missing,
-    "native": {"source": "src/AiUsageMonitor.Platform.Mac/Native/process-supervisor.c", "lines": native_lines},
+    "native": {"sources": ["src/AiUsageMonitor.Platform.Mac/Native/process-supervisor.c", "src/AiUsageMonitor.Platform.Mac/Native/local-socket.c"], "lines": native_lines},
     "projects": [{"name": name, "measured": name in seen,
                   "covered": sum(hit for (file, _), hit in lines.items() if file.startswith("src/" + directory.name + "/")),
                   "valid": sum(1 for file, _ in lines if file.startswith("src/" + directory.name + "/"))}

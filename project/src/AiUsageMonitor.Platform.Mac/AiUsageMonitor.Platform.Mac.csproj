@@ -25,9 +25,18 @@
   <Target Name="BuildProcessSupervisor" BeforeTargets="BeforeBuild" Condition="$([MSBuild]::IsOSPlatform('OSX'))"
           Inputs="$(MSBuildProjectDirectory)/Native/process-supervisor.c" Outputs="$(SupervisorOutput)">
     <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(SupervisorOutput)'))" />
-    <Exec Command="clang -std=gnu17 -Wall -Wextra -Werror &quot;$(MSBuildProjectDirectory)/Native/process-supervisor.c&quot; -o &quot;$(SupervisorOutput)&quot;" />
+    <Exec Command="clang -framework Security -framework CoreFoundation -std=gnu17 -Wall -Wextra -Werror &quot;$(MSBuildProjectDirectory)/Native/process-supervisor.c&quot; -o &quot;$(SupervisorOutput)&quot;" />
   </Target>
   <ItemGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
     <None Include="$(SupervisorOutput)" Link="ai-usage-process-supervisor" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <PropertyGroup><SocketLibrary>$(BaseIntermediateOutputPath)$(Configuration)/native/libaiusage-local-socket.dylib</SocketLibrary></PropertyGroup>
+  <Target Name="BuildLocalSocket" BeforeTargets="BeforeBuild" Condition="$([MSBuild]::IsOSPlatform('OSX'))"
+          Inputs="$(MSBuildProjectDirectory)/Native/local-socket.c" Outputs="$(SocketLibrary)">
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(SocketLibrary)'))" />
+    <Exec Command="clang -dynamiclib -Wall -Wextra -Werror &quot;$(MSBuildProjectDirectory)/Native/local-socket.c&quot; -o &quot;$(SocketLibrary)&quot;" />
+  </Target>
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+    <None Include="$(SocketLibrary)" Link="libaiusage-local-socket.dylib" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

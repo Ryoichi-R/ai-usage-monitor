@@ -134,7 +134,7 @@ CodexとClaudeで同じ水平位置に揃えます。
 
 ## macOS 開発版（Apple Silicon）
 
-共通Avalonia UI、Codex stdio監視、プロセス回収helper、メニューバー、LaunchAgentの実装があります。macOSのClaude取得（PTY・statusLine）は未実装で、Unsupportedを表示します。実機UI受入完了前の開発版です。
+共通Avalonia UI、Codex stdio監視、プロセス回収helper、メニューバー、LaunchAgentの実装があります。macOSのClaude取得は、署名検証付きPTYでの`/usage`取得とstatusLine受信に対応しています。active取得は検証済みCLI 2.1.274に限定し、版変更時は再検証が必要です。実機UI・実CLI受入完了前の開発版です。
 
 ```powershell
 dotnet build AiUsageMonitor.Mac.slnx
@@ -143,3 +143,5 @@ pwsh -NoProfile -File scripts/publish-ai-usage-monitor-macos.ps1
 ```
 
 テストには.NET 10 SDK、PowerShell 7.4以上、Python 3、Xcode command line toolsが必要です。publishは新規の`artifacts/macos-*`へarm64自己完結型`.app`とhash manifestを生成し、ad-hoc署名を検証します。署名の成功はGatekeeper・UI・実CLIの製品受入を意味しません。テストはfake CLIを使い、実アカウントを必要としません。Windowsの配布既定はAvaloniaホストです。従来WPF版はpublish/rebuildの`-UseLegacyWpf`で明示選択できます。
+
+Claudeの初回連携はメニューバーの「Claude Code連携…」から専用フォルダの信頼設定を行います。承認操作をアプリが自動実行することはありません。通常セッションからのstatusLine受信を使う場合は「設定…」に表示されるmacOS用の設定例を、利用者自身でClaude Codeへ設定してください。生成されるコマンドは同梱.NET helperの絶対パスで、PythonやPATH上のdotnetを必要としません。詳細は[Mac Claude取得の実装記録](docs/verification/claude-macos-acquisition-2026-09-27.md)を参照してください。

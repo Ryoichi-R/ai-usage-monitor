@@ -415,6 +415,87 @@ static sweep_t sweep_journal(const char *path)
 }
 
 
+
+// Static validation is bound to an open file and compared with the suspended process.
+#ifndef AIUSAGE_TEST_SIGNING
+#define CLAUDE_REQUIREMENT "identifier \"com.anthropic.claude-code\" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists and certificate leaf[subject.OU] = \"Q6L2SF6YDW\""
+#else
+#define CLAUDE_REQUIREMENT "identifier \"org.example.ai-usage-suspended-probe\""
+#endif
+static CFDataRef code_identity(SecStaticCodeRef code)
+{
+    CFDictionaryRef info = NULL;
+    if (SecCodeCopySigningInformation(code, kSecCSSigningInformation, &info) != errSecSuccess) return NULL;
+    CFTypeRef value = CFDictionaryGetValue(info, kSecCodeInfoUnique);
+    CFDataRef result = value != NULL && CFGetTypeID(value) == CFDataGetTypeID() ? CFRetain(value) : NULL;
+    CFRelease(info);
+    return result;
+}
+static CFDataRef verify_claude_file(const char *path, int *opened, SecRequirementRef *requirement)
+{
+    *opened = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    struct stat before, after, current;
+    if (*opened < 0 || fstat(*opened, &before) != 0 || !S_ISREG(before.st_mode)) return NULL;
+    CFStringRef text = CFStringCreateWithCString(NULL, CLAUDE_REQUIREMENT, kCFStringEncodingUTF8);
+    OSStatus status = SecRequirementCreateWithString(text, kSecCSDefaultFlags, requirement);
+    CFRelease(text);
+    if (status != errSecSuccess) return NULL;
+    char fdpath[64]; snprintf(fdpath, sizeof(fdpath), "/dev/fd/%d", *opened);
+    CFURLRef url = CFURLCreateFromFileSystemRepresentation(NULL, (const UInt8 *)fdpath, strlen(fdpath), false);
+    SecStaticCodeRef code = NULL;
+    status = SecStaticCodeCreateWithPath(url, kSecCSDefaultFlags, &code);
+    CFRelease(url);
+    if (status != errSecSuccess) return NULL;
+    CFDataRef identity = NULL;
+    if (SecStaticCodeCheckValidity(code, kSecCSStrictValidate, *requirement) == errSecSuccess)
+        identity = code_identity(code);
+    CFRelease(code);
+    if (fstat(*opened, &after) != 0 || stat(path, &current) != 0 ||
+        before.st_dev != current.st_dev || before.st_ino != current.st_ino ||
+        before.st_size != after.st_size || before.st_mtimespec.tv_sec != after.st_mtimespec.tv_sec ||
+        before.st_mtimespec.tv_nsec != after.st_mtimespec.tv_nsec ||
+        before.st_ctimespec.tv_sec != after.st_ctimespec.tv_sec || before.st_ctimespec.tv_nsec != after.st_ctimespec.tv_nsec) {
+        if (identity != NULL) CFRelease(identity);
+        return NULL;
+    }
+    return identity;
+}
+static bool verify_claude_process(pid_t pid, SecRequirementRef requirement, CFDataRef expected)
+{
+    CFNumberRef number = CFNumberCreate(NULL, kCFNumberIntType, &pid);
+    const void *keys[] = { kSecGuestAttributePid }; const void *values[] = { number };
+    CFDictionaryRef attributes = CFDictionaryCreate(NULL, keys, values, 1, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    SecCodeRef guest = NULL;
+    OSStatus status = SecCodeCopyGuestWithAttributes(NULL, attributes, kSecCSDefaultFlags, &guest);
+    CFRelease(attributes); CFRelease(number);
+    if (status != errSecSuccess) return false;
+    status = SecCodeCheckValidity(guest, kSecCSStrictValidate, requirement);
+    SecStaticCodeRef code = NULL;
+    if (status == errSecSuccess) status = SecCodeCopyStaticCode(guest, kSecCSDefaultFlags, &code);
+    CFRelease(guest);
+    if (status != errSecSuccess) return false;
+    CFDataRef actual = code_identity(code); CFRelease(code);
+    bool valid = actual != NULL && CFEqual(expected, actual);
+    if (actual != NULL) CFRelease(actual);
+    return valid;
+}
+// Bounded queues keep a non-reading UI from blocking supervision or cleanup.
+typedef struct { unsigned char bytes[65536]; size_t length; } io_queue_t;
+static bool relay_read(int fd, io_queue_t *queue)
+{
+    if (queue->length == sizeof(queue->bytes)) return false;
+    ssize_t n = read(fd, queue->bytes + queue->length, sizeof(queue->bytes) - queue->length);
+    if (n > 0) queue->length += (size_t)n;
+    return n > 0 || (n < 0 && (errno == EAGAIN || errno == EINTR));
+}
+static bool relay_write(int fd, io_queue_t *queue)
+{
+    if (queue->length == 0) return true;
+    ssize_t n = write(fd, queue->bytes, queue->length);
+    if (n > 0) { queue->length -= (size_t)n; memmove(queue->bytes, queue->bytes + n, queue->length); }
+    return n >= 0 || errno == EAGAIN || errno == EINTR;
+}
+
 static volatile sig_atomic_t stopping;
 static void stop_handler(int number) { (void)number; stopping = 1; }
 extern char **environ;
@@ -433,8 +514,18 @@ static int open_private_directory(const char *path)
 int main(int argc, char **argv)
 {
     if (argc < 3) return 64;
+    if (strcmp(argv[1], "--verify-claude") == 0) {
+        int fd = -1; SecRequirementRef requirement = NULL;
+        CFDataRef identity = verify_claude_file(argv[2], &fd, &requirement);
+        if (identity != NULL) CFRelease(identity);
+        if (requirement != NULL) CFRelease(requirement);
+        if (fd >= 0) close(fd);
+        return identity != NULL ? 0 : 77;
+    }
+    bool pty = strcmp(argv[1], "--pty") == 0 || strcmp(argv[1], "--claude-pty") == 0;
+    bool claude = strcmp(argv[1], "--claude") == 0 || strcmp(argv[1], "--claude-pty") == 0;
     bool sweep = strcmp(argv[1], "--sweep") == 0;
-    if (!sweep && (argc < 5 || strcmp(argv[1], "--run") != 0)) return 64;
+    if (!sweep && (argc < 5 || (!pty && !claude && strcmp(argv[1], "--run") != 0))) return 64;
     const char *directory = argv[2];
     int directory_fd = open_private_directory(directory);
     if (directory_fd == -2) return 75;
@@ -473,7 +564,23 @@ int main(int argc, char **argv)
         close(directory_fd);
         return result.residual == 0 ? 0 : 74;
     }
+    int verified_fd = -1; SecRequirementRef requirement = NULL; CFDataRef identity = NULL;
+    if (claude) {
+        identity = verify_claude_file(argv[4], &verified_fd, &requirement);
+        if (identity == NULL) return 77;
+    }
     if (setsid() < 0) return 71;
+    signal(SIGTTOU, SIG_IGN);
+    int master = -1, slave = -1;
+    if (pty) {
+        struct winsize size = { .ws_row = 120, .ws_col = 400 };
+        if (openpty(&master, &slave, NULL, NULL, &size) != 0 || ioctl(slave, TIOCSCTTY, 0) != 0) return 71;
+        struct termios terminal;
+        if (tcgetattr(slave, &terminal) != 0) return 71;
+        terminal.c_lflag &= ~(ECHO | ECHONL);
+        if (tcsetattr(slave, TCSANOW, &terminal) != 0) return 71;
+        fcntl(master, F_SETFD, FD_CLOEXEC); fcntl(slave, F_SETFD, FD_CLOEXEC);
+    }
     signal(SIGHUP, SIG_IGN);
     signal(SIGPIPE, SIG_IGN);
     signal(SIGTERM, stop_handler);
@@ -514,9 +621,15 @@ int main(int argc, char **argv)
     posix_spawnattr_setpgroup(&attr, 0);
     posix_spawnattr_setflags(&attr, POSIX_SPAWN_START_SUSPENDED | POSIX_SPAWN_SETPGROUP |
         POSIX_SPAWN_CLOEXEC_DEFAULT | POSIX_SPAWN_SETSIGDEF | POSIX_SPAWN_SETSIGMASK);
-    for (int fd = 0; fd <= 2; fd++) posix_spawn_file_actions_adddup2(&actions, fd, fd);
+    for (int fd = 0; fd <= 2; fd++) posix_spawn_file_actions_adddup2(&actions, pty ? slave : fd, fd);
     pid_t child = 0;
-    int error = posix_spawn(&child, argv[4], &actions, &attr, &argv[4], env);
+    const char *launch_path = argv[4];
+#ifdef AIUSAGE_TEST_SIGNING
+    // Test-only identity mismatch injection; never present in production binaries.
+    const char *replacement = getenv("AIUSAGE_TEST_LAUNCH_PATH");
+    if (replacement != NULL) launch_path = replacement;
+#endif
+    int error = posix_spawn(&child, launch_path, &actions, &attr, &argv[4], env);
     posix_spawn_file_actions_destroy(&actions);
     posix_spawnattr_destroy(&attr);
     free(env);
@@ -524,17 +637,34 @@ int main(int argc, char **argv)
     tracker_set_root(&tracker, child);
     // The durable identity journal and tracking registration precede SIGCONT.
     int result = 0;
+    if (claude && !verify_claude_process(child, requirement, identity)) result = 77;
+    if (identity != NULL) CFRelease(identity);
+    if (requirement != NULL) CFRelease(requirement);
+    if (verified_fd >= 0) close(verified_fd);
+    if (pty && tcsetpgrp(slave, child) != 0) result = 71;
+    if (slave >= 0) close(slave);
+    io_queue_t to_child = { .length = 0 }, to_parent = { .length = 0 };
+    if (pty) {
+        fcntl(master, F_SETFL, O_NONBLOCK);
+        fcntl(STDIN_FILENO, F_SETFL, O_NONBLOCK);
+        fcntl(STDOUT_FILENO, F_SETFL, O_NONBLOCK);
+    }
     struct pollfd poller = { .fd = control, .events = POLLIN | POLLHUP };
-    if (tracker.overflow || stopping || poll(&poller, 1, 0) != 0 || write(control, "R", 1) != 1) result = 74;
+    if (result == 0 && (tracker.overflow || stopping || poll(&poller, 1, 0) != 0 || write(control, "R", 1) != 1)) result = 74;
     if (result == 0 && kill(child, SIGCONT) != 0) result = 71;
     while (result == 0 && !stopping && !tracker.root_reaped) {
         tracker_pump(&tracker, 20);
         if (tracker.escapes || tracker.overflow) { result = 74; break; }
         if (poll(&poller, 1, 0) != 0) break;
+        if (pty) {
+            if (!relay_read(master, &to_parent) || !relay_write(STDOUT_FILENO, &to_parent) ||
+                !relay_read(STDIN_FILENO, &to_child) || !relay_write(master, &to_child)) { result = 74; break; }
+        }
     }
     if (tracker_terminate(&tracker, 3000, 3000, NULL) != 0) result = 74;
     if (result == 0 && tracker.root_reaped && WIFEXITED(tracker.root_status)) result = WEXITSTATUS(tracker.root_status);
     if (tracker_alive(&tracker) == 0) unlink(journal);
+    if (master >= 0) close(master);
     close(tracker.kq);
     close(control);
     close(directory_fd);

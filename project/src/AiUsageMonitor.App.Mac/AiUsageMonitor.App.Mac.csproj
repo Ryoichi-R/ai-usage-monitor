@@ -25,4 +25,14 @@
     <Content Include="../../README.md" Link="README.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup><InternalsVisibleTo Include="AiUsageMonitor.App.Mac.Tests" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../AiUsageMonitor.Claude.Mac/AiUsageMonitor.Claude.Mac.csproj" /></ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../AiUsageMonitor.Claude.Bridge.Mac/AiUsageMonitor.Claude.Bridge.Mac.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+  <Target Name="CopyStatusLineBridgeForDevelopment" AfterTargets="Build" Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+    <MSBuild Projects="../AiUsageMonitor.Claude.Bridge.Mac/AiUsageMonitor.Claude.Bridge.Mac.csproj" Targets="GetStatusLineBridgeFiles" Properties="Configuration=$(Configuration)">
+      <Output TaskParameter="TargetOutputs" ItemName="_BridgeFiles" />
+    </MSBuild>
+    <Copy SourceFiles="@(_BridgeFiles)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
+  </Target>
 </Project>

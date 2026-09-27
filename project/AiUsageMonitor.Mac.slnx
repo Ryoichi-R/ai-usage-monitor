@@ -31,4 +31,7 @@
     <Project Path="tests/support/AiUsageMonitor.FakeAppServer/AiUsageMonitor.FakeAppServer.csproj" />
     <Project Path="tests/support/AiUsageMonitor.FakeClaudeCli/AiUsageMonitor.FakeClaudeCli.csproj" />
   </Folder>
+  <Project Path="src/AiUsageMonitor.Claude.Mac/AiUsageMonitor.Claude.Mac.csproj" />
+  <Project Path="src/AiUsageMonitor.Claude.Bridge.Mac/AiUsageMonitor.Claude.Bridge.Mac.csproj" />
+  <Project Path="tests/AiUsageMonitor.Claude.Mac.Tests/AiUsageMonitor.Claude.Mac.Tests.csproj" />
 </Solution>

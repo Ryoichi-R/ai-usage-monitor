@@ -20,7 +20,7 @@ public static class ClaudeStatusLineParser
             if (root.ValueKind != JsonValueKind.Object)
                 return Failure(receivedAt, "INVALID_ROOT");
             if (root.TryGetProperty("protocol", out JsonElement protocol) &&
-                (!protocol.TryGetInt32(out int value) || value != ProtocolVersion))
+                (protocol.ValueKind != JsonValueKind.Number || !protocol.TryGetInt32(out int value) || value != ProtocolVersion))
                 return Failure(receivedAt, "PROTOCOL_MISMATCH");
 
             string? version = GetString(root, "version");
@@ -65,7 +65,7 @@ public static class ClaudeStatusLineParser
         DateTimeOffset? reset = null;
         if (window.TryGetProperty("resets_at", out JsonElement resetElement) && resetElement.ValueKind != JsonValueKind.Null)
         {
-            if (!resetElement.TryGetInt64(out long epoch)) return "INVALID_RESET";
+            if (resetElement.ValueKind != JsonValueKind.Number || !resetElement.TryGetInt64(out long epoch)) return "INVALID_RESET";
             try
             {
                 DateTimeOffset candidate = DateTimeOffset.FromUnixTimeSeconds(epoch);

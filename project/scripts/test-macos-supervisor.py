@@ -39,13 +39,13 @@ def fake(root, escape):
         time.sleep(.2)
 
 
-def owner(helper, root, escape):
+def owner(helper, root, escape, pty=False):
     journal = root / "journal"
     journal.mkdir(mode=0o700)
     listener = socket.socket(socket.AF_UNIX)
     listener.bind(str(root / "control"))
     listener.listen(1)
-    args = [helper, "--run", str(journal), str(root / "control"), sys.executable,
+    args = [helper, "--pty" if pty else "--run", str(journal), str(root / "control"), sys.executable,
             str(Path(__file__).resolve()), "--fake", str(root)]
     if escape:
         args.append("--escape")
@@ -63,11 +63,13 @@ def sweep(helper, journal):
     assert result.returncode == 0, "sweep failed"
 
 
-def trial(helper, mode):
+def trial(helper, mode, pty=False):
     # Short AF_UNIX path, private directory; only these fake identities are terminated.
     with tempfile.TemporaryDirectory(prefix="aiusage-test-", dir="/tmp") as directory:
         root = Path(directory)
         args = [sys.executable, str(Path(__file__).resolve()), "--owner", helper, str(root)]
+        if pty:
+            args.append("--pty")
         if mode == "escape":
             args.append("--escape")
         app = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -137,15 +139,16 @@ def main():
     parser.add_argument("--fake")
     parser.add_argument("--owner", nargs=2)
     parser.add_argument("--escape", action="store_true")
+    parser.add_argument("--pty", action="store_true")
     parser.add_argument("--repeat", type=int, default=2)
     args = parser.parse_args()
     if args.fake:
         return fake(Path(args.fake), args.escape)
     if args.owner:
-        return owner(args.owner[0], Path(args.owner[1]), args.escape)
+        return owner(args.owner[0], Path(args.owner[1]), args.escape, args.pty)
     for mode in ["parent-kill", "helper-kill", "both-kill", "escape"]:
         for _ in range(args.repeat):
-            trial(args.helper, mode)
+            trial(args.helper, mode, args.pty)
         print(mode + ": PASS", flush=True)
     negative_sweep(args.helper)
     print("identity-mismatch: PASS", flush=True)

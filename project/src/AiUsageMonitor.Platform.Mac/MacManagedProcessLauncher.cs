@@ -6,7 +6,7 @@ namespace AiUsageMonitor.Platform.Mac;
 
 /// <summary>専用native helperが生成前のgroup・追跡登録と、親切断時の回収を所有する。</summary>
 [SupportedOSPlatform("macos")]
-public sealed class MacManagedProcessLauncher(string helperPath, string journalRoot) : IManagedProcessLauncher
+public sealed class MacManagedProcessLauncher(string helperPath, string journalRoot, bool usePty = false, bool verifyClaude = false) : IManagedProcessLauncher
 {
     public async Task<IManagedProcessSession> StartAsync(ProcessStartInfo startInfo, CancellationToken cancellationToken)
     {
@@ -35,7 +35,7 @@ public sealed class MacManagedProcessLauncher(string helperPath, string journalR
                 RedirectStandardError = true,
                 WorkingDirectory = startInfo.WorkingDirectory,
             };
-            info.ArgumentList.Add("--run");
+            info.ArgumentList.Add(verifyClaude ? (usePty ? "--claude-pty" : "--claude") : (usePty ? "--pty" : "--run"));
             info.ArgumentList.Add(journal);
             info.ArgumentList.Add(socketPath);
             info.ArgumentList.Add(startInfo.FileName);

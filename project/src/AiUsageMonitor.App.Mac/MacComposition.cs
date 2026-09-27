@@ -1,6 +1,8 @@
 using System.Runtime.Versioning;
 using AiUsageMonitor.App.UI.Hosting;
 using AiUsageMonitor.Platform.Mac;
+using AiUsageMonitor.Claude.Mac;
+using AiUsageMonitor.Claude.Cli;
 
 namespace AiUsageMonitor.App.Mac;
 
@@ -13,6 +15,12 @@ internal static class MacComposition
         ArgumentNullException.ThrowIfNull(paths);
         ArgumentNullException.ThrowIfNull(log);
         string baseDirectory = AppContext.BaseDirectory;
+        var workspace = new AppPathClaudeWorkspace(paths);
+        string helper = Path.Combine(baseDirectory, "ai-usage-process-supervisor");
+        string journal = Path.Combine(paths.ApplicationSupportDirectory, "ProcessSessions");
+        string bridge = Path.Combine(baseDirectory, "ai-usage-claude-statusline");
+        var policy = new ClaudeLaunchPolicy(paths.UserHomeDirectory);
+        var probe = new MacClaudeCapabilityProbe(new MacManagedProcessLauncher(helper, journal, verifyClaude: true), policy, workspace);
         return new WidgetHostServices
         {
             AppPaths = paths,
@@ -23,10 +31,14 @@ internal static class MacComposition
                     typeof(MacComposition).Assembly.Location)),
             ShellOpener = new MacShellOpener(),
             CreateLayerController = () => new MacWidgetLayerController(),
-            // Claude active取得（CLIの/usage画面）はPhase 6で実装する。それまではCLIを起動しない。
-            ClaudeSourceFactory = _ => new UnavailableClaudeUsageSource(),
-            ClaudeWorkspace = new AppPathClaudeWorkspace(paths),
-            ClaudeBridgePath = Path.Combine(baseDirectory, "claude-statusline-bridge"),
+            ClaudeSourceFactory = configuration => new ClaudeCliActiveSource(
+                configuration.ExecutablePath, bridge, configuration.StartupTimeout, workspace,
+                new MacClaudeScreenSessionFactory(new MacManagedProcessLauncher(helper, journal, usePty: true, verifyClaude: true), policy),
+                new MacClaudeExecutableLocator(paths.UserHomeDirectory, helper, policy), probe.ProbeAsync),
+            ClaudeWorkspace = workspace,
+            ClaudeBridgePath = bridge,
+            ClaudeSetupExample = ClaudeStatusLineBridge.CreateSetupExample(bridge),
+            CreateClaudeListener = () => new ClaudeUsageSocketListener(),
             CodexProcessLauncher = new MacManagedProcessLauncher(
                 Path.Combine(baseDirectory, "ai-usage-process-supervisor"),
                 Path.Combine(paths.ApplicationSupportDirectory, "ProcessSessions")),

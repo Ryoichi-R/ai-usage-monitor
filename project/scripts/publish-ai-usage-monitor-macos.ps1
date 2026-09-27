@@ -21,9 +21,11 @@ New-Item -ItemType Directory -Path $macos, $resources | Out-Null
 $project = Join-Path $root 'src/AiUsageMonitor.App.Mac/AiUsageMonitor.App.Mac.csproj'
 & dotnet publish $project -c Release -r osx-arm64 --self-contained true -o $macos --nologo
 if ($LASTEXITCODE -ne 0) { throw 'PUBLISH_FAILED' }
+& dotnet publish (Join-Path $root 'src/AiUsageMonitor.Claude.Bridge.Mac/AiUsageMonitor.Claude.Bridge.Mac.csproj') -c Release -r osx-arm64 --self-contained true -o $macos --nologo
+if ($LASTEXITCODE -ne 0) { throw 'BRIDGE_PUBLISH_FAILED' }
 $executable = Join-Path $macos 'AiUsageMonitor.App.Mac'
 $helper = Join-Path $macos 'ai-usage-process-supervisor'
-foreach ($binary in @($executable, $helper)) {
+foreach ($binary in @($executable, $helper, (Join-Path $macos 'ai-usage-claude-statusline'))) {
     if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) { throw 'BINARY_MISSING' }
     & /usr/bin/lipo -verify_arch arm64 $binary
     if ($LASTEXITCODE -ne 0) { throw 'ARM64_BINARY_REQUIRED' }

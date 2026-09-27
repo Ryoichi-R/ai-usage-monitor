@@ -39,22 +39,33 @@ try {
     }
     $native = Join-Path $output 'ai-usage-process-supervisor'
     $nativeSource = Join-Path $root 'src/AiUsageMonitor.Platform.Mac/Native/process-supervisor.c'
-    $flags = @('-std=gnu17', '-Wall', '-Wextra', '-Werror')
+    $flags = @('-framework', 'Security', '-framework', 'CoreFoundation', '-std=gnu17', '-Wall', '-Wextra', '-Werror')
     if ($Coverage) { $flags += @('-fprofile-instr-generate', '-fcoverage-mapping', '-fprofile-update=atomic') }
     & clang @flags $nativeSource -o $native
     if ($LASTEXITCODE -ne 0) { throw 'NATIVE_BUILD_FAILED' }
+    $testNative = Join-Path $output 'test-claude-supervisor'
+    & clang @flags -DAIUSAGE_TEST_SIGNING $nativeSource -o $testNative
+    if ($LASTEXITCODE -ne 0) { throw 'SIGNED_FIXTURE_BUILD_FAILED' }
+    $socketSource = Join-Path $root 'src/AiUsageMonitor.Platform.Mac/Native/local-socket.c'
+    $socketLibrary = Join-Path $output 'libaiusage-local-socket.dylib'
+    & clang @flags -dynamiclib $socketSource -o $socketLibrary
+    if ($LASTEXITCODE -ne 0) { throw 'SOCKET_NATIVE_BUILD_FAILED' }
     $previousProfile = $env:LLVM_PROFILE_FILE
     try {
         if ($Coverage) { $env:LLVM_PROFILE_FILE = Join-Path $output 'native-%p.profraw' }
         & python3 (Join-Path $PSScriptRoot 'test-macos-supervisor.py') --helper $native
         if ($LASTEXITCODE -ne 0) { throw 'NATIVE_ACCEPTANCE_FAILED' }
+        & python3 (Join-Path $PSScriptRoot 'test-macos-supervisor.py') --helper $native --pty
+        if ($LASTEXITCODE -ne 0) { throw 'PTY_ACCEPTANCE_FAILED' }
+        & python3 (Join-Path $PSScriptRoot 'test-macos-claude-native.py') --production $native --test-helper $testNative --library $socketLibrary --fake-source (Join-Path $root 'tests/support/fake-claude-macos.c')
+        if ($LASTEXITCODE -ne 0) { throw 'CLAUDE_NATIVE_ACCEPTANCE_FAILED' }
     } finally { $env:LLVM_PROFILE_FILE = $previousProfile }
     if ($Coverage) {
         $profile = Join-Path $output 'native.profdata'
         $raw = @(Get-ChildItem -LiteralPath $output -Filter '*.profraw' | ForEach-Object FullName)
         & xcrun llvm-profdata merge -sparse @raw -o $profile
         if ($LASTEXITCODE -ne 0) { throw 'NATIVE_PROFILE_FAILED' }
-        & xcrun llvm-cov export $native ('-instr-profile=' + $profile) $nativeSource |
+        & xcrun llvm-cov export $native -object $testNative -object $socketLibrary ('-instr-profile=' + $profile) $nativeSource $socketSource |
             Set-Content -LiteralPath (Join-Path $results 'native-coverage.json') -Encoding utf8NoBOM
         if ($LASTEXITCODE -ne 0) { throw 'NATIVE_COVERAGE_FAILED' }
         & python3 (Join-Path $PSScriptRoot 'summarize-macos-coverage.py') --project $root --results $results --threshold $Threshold

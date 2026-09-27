@@ -25,7 +25,7 @@ internal sealed class DemoWidgetHost : IDisposable
 {
     private const double ScreenMarginDip = 12;
     private const string ClaudeSetupExampleText =
-        "macOS版のClaude Code statusLine連携はPhase 5で提供予定です（計画D11）。現在は設定例を表示しません。";
+        "デモ表示ではClaude Codeとの接続や設定保存を行いません。通常起動で連携設定を確認してください。";
 
     private readonly IClassicDesktopStyleApplicationLifetime _lifetime;
     private readonly UsageViewModel _viewModel = DemoUsageData.Create();
