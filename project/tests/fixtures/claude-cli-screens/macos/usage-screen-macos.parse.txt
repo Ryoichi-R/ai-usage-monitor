@@ -1,0 +1,32 @@
+[Screen Reader Mode: on via flag]
+Claude Code v1.1.111
+Sonnet 1 · Claude Pro
+~/Library/Application Support/AiUsageMonitor-probe/ClaudeCliWorkspace
+warning: Safe mode: all customizations are disabled (CLAUDE.md, skills, plugins, hooks, MCP, agents, and more)
+Restart without --safe-mode to re-enable
+you: /usage
+Settings  Status   Config   Usage   Stats
+Session
+Total cost:            $1.1111
+Total duration (API):  1s
+Total duration (wall): 1s
+Total code changes:    1 lines added, 1 lines removed
+Usage:                 1 input, 1 output, 1 cache read, 1 cache write
+Current session
+11% 11% used
+Resets 11:11pm (Asia/Tokyo)
+Current week (all models)
+11% 11% used
+Resets Aug 1 at 1:11pm (Asia/Tokyo)
+What's contributing to your limits usage?
+Approximate, based on local sessions on this machine — does not include other devices or claude.ai
+Last 11h · these are independent characteristics of your usage, not a breakdown
+11% of your usage was at >111k context
+Longer sessions are more expensive even when cached. /compact mid-task, /clear when switching to new tasks.
+Skills % of usage
+/skill-a 1%
+/skill-b 1%
+d to day · w to week
+Usage credits
+Usage credits are off · /usage-credits to turn them on
+Esc to cancel

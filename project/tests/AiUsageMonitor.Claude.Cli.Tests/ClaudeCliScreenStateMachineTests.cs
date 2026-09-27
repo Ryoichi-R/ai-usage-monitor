@@ -17,6 +17,12 @@ public sealed class ClaudeCliScreenStateMachineTests
     [InlineData("usage-screen-ja.txt", ClaudeCliScreenSignature.UsageScreen)]
     [InlineData("ready-en.txt", ClaudeCliScreenSignature.Ready)]
     [InlineData("unknown.txt", ClaudeCliScreenSignature.Unknown)]
+    [InlineData("macos/ready-macos.txt", ClaudeCliScreenSignature.Ready)]
+    [InlineData("macos/ready-macos.parse.txt", ClaudeCliScreenSignature.Ready)]
+    [InlineData("macos/usage-screen-macos.txt", ClaudeCliScreenSignature.UsageScreen)]
+    [InlineData("macos/usage-screen-macos.parse.txt", ClaudeCliScreenSignature.UsageScreen)]
+    [InlineData("macos/after-escape-macos.txt", ClaudeCliScreenSignature.Ready)]
+    [InlineData("macos/after-escape-macos.parse.txt", ClaudeCliScreenSignature.Ready)]
     public void ClassifiesKnownScreens(string fixture, ClaudeCliScreenSignature expected) =>
         Assert.Equal(expected, ClaudeCliScreenStateMachine.Classify(Fixture(fixture)));
 

@@ -1,0 +1,9 @@
+[Screen Reader Mode: on via flag]
+Claude Code v1.1.111
+Sonnet 1 · Claude Pro
+~/Library/Application Support/AiUsageMonitor-probe/ClaudeCliWorkspace
+warning: Safe mode: all customizations are disabled (CLAUDE.md, skills, plugins, hooks, MCP, agents, and more)
+Restart without --safe-mode to re-enable
+auto mode on (shift+tab to cycle)
+effort: high · /effort
+$

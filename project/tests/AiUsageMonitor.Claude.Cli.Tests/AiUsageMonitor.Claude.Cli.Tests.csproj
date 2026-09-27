@@ -23,5 +23,6 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="..\fixtures\claude-cli-screens\*.txt" LinkBase="fixtures\claude-cli-screens" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\fixtures\claude-cli-screens\macos\*.txt" LinkBase="fixtures\claude-cli-screens\macos" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
