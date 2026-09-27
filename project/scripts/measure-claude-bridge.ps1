@@ -6,7 +6,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$bridge = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\src\AiUsageMonitor.App\Assets\claude-statusline-bridge.ps1'))
+$bridge = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\src\AiUsageMonitor.App.WpfLegacy\Assets\claude-statusline-bridge.ps1'))
 if (-not (Test-Path -LiteralPath $bridge)) { throw "Bridge not found: $bridge" }
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
     $OutputPath = Join-Path $PSScriptRoot ('..\TestResults\bridge-measurement-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.json')

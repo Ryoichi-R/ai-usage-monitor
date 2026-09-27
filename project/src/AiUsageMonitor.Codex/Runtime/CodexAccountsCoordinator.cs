@@ -57,9 +57,13 @@ public sealed class CodexAccountsCoordinator : IAsyncDisposable
 
     public event Action<CodexAccountSnapshot>? SnapshotChanged;
 
+    public Task ConfigureAsync(AppSettings settings, Func<System.Diagnostics.Process, IDisposable>? lifetimeGuardFactory,
+        CancellationToken cancellationToken = default) => ConfigureAsync(settings, lifetimeGuardFactory, null, cancellationToken);
+
     public async Task ConfigureAsync(
         AppSettings settings,
         Func<System.Diagnostics.Process, IDisposable>? lifetimeGuardFactory,
+        AiUsageMonitor.Platform.IManagedProcessLauncher? processLauncher,
         CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
@@ -93,7 +97,7 @@ public sealed class CodexAccountsCoordinator : IAsyncDisposable
                     normalized.CodexExecutablePath,
                     account.CodexHomePath is null ? null : effectiveHome,
                     TimeSpan.FromSeconds(normalized.StartupTimeoutSeconds),
-                    lifetimeGuardFactory);
+                    lifetimeGuardFactory, processLauncher);
 
                 string? reason = effectiveHome is null ||
                     (account.CodexHomePath is not null && !Directory.Exists(effectiveHome))

@@ -4,6 +4,9 @@ namespace AiUsageMonitor.Core.Presentation;
 
 public static class UsageStatusFormatter
 {
+    // 常駐アイコンの置き場所の呼び名。WindowsはタスクバーのNotification Area、macOSはメニューバー。
+    private static readonly string StatusIconLocation = OperatingSystem.IsMacOS() ? "メニューバー" : "通知領域";
+
     public static string Format(string providerName, UsageSnapshot snapshot)
     {
         if (snapshot.Provider == UsageProvider.Claude)
@@ -53,7 +56,7 @@ public static class UsageStatusFormatter
             ? FormatClaudeStaleReason(snapshot.Reason)
             : snapshot.Availability switch
             {
-                UsageAvailability.Setup => "未接続 — 通知領域から連携設定を開いてください",
+                UsageAvailability.Setup => $"未接続 — {StatusIconLocation}から連携設定を開いてください",
                 UsageAvailability.Loading => "接続を確認しています",
                 UsageAvailability.Waiting => "接続済み — 利用情報を待っています",
                 UsageAvailability.Unavailable => "利用情報を取得できません",

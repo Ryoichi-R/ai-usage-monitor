@@ -13,7 +13,7 @@ OpenAIおよびAnthropic非公式のWindows用デスクトップウィジェッ�
 ## 開発実行
 
 ```powershell
-dotnet run --project .\src\AiUsageMonitor.App\AiUsageMonitor.App.csproj
+dotnet run --project .\src\AiUsageMonitor.App.WpfLegacy\AiUsageMonitor.App.WpfLegacy.csproj
 ```
 
 ## 導入・安全再ビルド
@@ -131,3 +131,15 @@ window期間だけに限定し、生のCLI画面、使用率、account、絶対�
 
 Claudeの`CLI`は`/usage`画面の読取り完了時刻、`SL受信`はstatusLineをpipeで受信した時刻です。どちらもAnthropic server上の測定時刻ではありません。正常取得日時は利用枠の行数や補助表示の有無にかかわらずprovider見出し行へ表示し、
 CodexとClaudeで同じ水平位置に揃えます。
+
+## macOS 開発版（Apple Silicon）
+
+共通Avalonia UI、Codex stdio監視、プロセス回収helper、メニューバー、LaunchAgentの実装があります。macOSのClaude取得（PTY・statusLine）は未実装で、Unsupportedを表示します。実機UI受入完了前の開発版です。
+
+```powershell
+dotnet build AiUsageMonitor.Mac.slnx
+pwsh -NoProfile -File scripts/test-ai-usage-monitor.ps1 -Coverage
+pwsh -NoProfile -File scripts/publish-ai-usage-monitor-macos.ps1
+```
+
+テストには.NET 10 SDK、PowerShell 7.4以上、Python 3、Xcode command line toolsが必要です。publishは新規の`artifacts/macos-*`へarm64自己完結型`.app`とhash manifestを生成し、ad-hoc署名を検証します。署名の成功はGatekeeper・UI・実CLIの製品受入を意味しません。テストはfake CLIを使い、実アカウントを必要としません。Windowsの配布既定はAvaloniaホストです。従来WPF版はpublish/rebuildの`-UseLegacyWpf`で明示選択できます。

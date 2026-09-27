@@ -23,7 +23,8 @@ param(
     [string]$Runtime,
     [string]$OutputRoot,
     [switch]$SelectOutputRoot,
-    [switch]$RevealOutput
+    [switch]$RevealOutput,
+    [switch]$UseLegacyWpf
 )
 
 Set-StrictMode -Version Latest
@@ -295,7 +296,7 @@ if ($buildPaths.UsesExternalRoot -and (Split-Path -Leaf $resolvedOutputRoot) -ie
     throw "Specify the parent folder in which AiUsageMonitorBuilds will be created, not AiUsageMonitorBuilds itself: $resolvedOutputRoot"
 }
 
-$appProject = Assert-PathWithinRoot -Path (Join-Path $projectRoot 'src/AiUsageMonitor.App/AiUsageMonitor.App.csproj') -Root $projectRoot
+$appProject = Assert-PathWithinRoot -Path (Join-Path $projectRoot $(if ($UseLegacyWpf) { 'src/AiUsageMonitor.App.WpfLegacy/AiUsageMonitor.App.WpfLegacy.csproj' } else { 'src/AiUsageMonitor.App.Windows/AiUsageMonitor.App.Windows.csproj' })) -Root $projectRoot
 $projectArtifactsRoot = Assert-PathWithinRoot -Path (Join-Path $projectRoot 'artifacts') -Root $projectRoot
 if ($resolvedOutputRoot -ine $projectRoot -and
     ($resolvedOutputRoot -ieq $projectArtifactsRoot -or
@@ -385,7 +386,8 @@ try {
         -Runtime $Runtime `
         -OutputDir $stagingDir `
         -ManagedRoot $stagingManagedRoot `
-        -BuildArtifactsRoot $buildArtifacts
+        -BuildArtifactsRoot $buildArtifacts `
+        -UseLegacyWpf:$UseLegacyWpf
     if ($LASTEXITCODE -ne 0) {
         throw "Publish $Runtime failed with exit code $LASTEXITCODE"
     }

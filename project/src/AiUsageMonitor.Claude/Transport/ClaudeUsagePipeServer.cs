@@ -4,7 +4,7 @@ using AiUsageMonitor.Core.Usage;
 
 namespace AiUsageMonitor.Claude.Transport;
 
-public sealed class ClaudeUsagePipeServer : IAsyncDisposable
+public sealed class ClaudeUsagePipeServer : IClaudeUsageListener
 {
     // Public compatibility identifier used by existing statusLine settings.
     public const string PipeName = "CodexUsageMonitor-Claude-v1";

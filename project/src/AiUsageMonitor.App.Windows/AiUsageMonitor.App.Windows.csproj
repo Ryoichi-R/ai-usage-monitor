@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <AssemblyName>AiUsageMonitor.App</AssemblyName>
+    <ApplicationIcon>../AiUsageMonitor.App.WpfLegacy/Assets/ai-usage-monitor.ico</ApplicationIcon>
+    <IncludeNativeLibrariesForSelfExtract Condition="'$(PublishSingleFile)' == 'true'">true</IncludeNativeLibrariesForSelfExtract>
+    <UseAppHost Condition="'$(SelfContained)' != 'true'">false</UseAppHost>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.2" />
+    <ProjectReference Include="../AiUsageMonitor.App.UI/AiUsageMonitor.App.UI.csproj" />
+    <ProjectReference Include="../AiUsageMonitor.Platform.Windows/AiUsageMonitor.Platform.Windows.csproj" />
+    <ProjectReference Include="../AiUsageMonitor.Claude.Windows/AiUsageMonitor.Claude.Windows.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="../AiUsageMonitor.App.WpfLegacy/Assets/claude-statusline-bridge.ps1" Link="claude-statusline-bridge.ps1" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <Content Include="../AiUsageMonitor.App.WpfLegacy/Assets/ai-usage-monitor.ico" Link="ai-usage-monitor.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    <Content Include="../../README.md" Link="README.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+  </ItemGroup>
+  <ItemGroup><InternalsVisibleTo Include="AiUsageMonitor.App.Windows.Tests" /></ItemGroup>
+</Project>

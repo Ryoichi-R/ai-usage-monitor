@@ -10,7 +10,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $projectRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..')).TrimEnd('\')
-$solution = Join-Path $projectRoot 'AiUsageMonitor.slnx'
+$solution = Join-Path $projectRoot $(if ($IsWindows) { 'AiUsageMonitor.slnx' } else { 'AiUsageMonitor.Mac.slnx' })
 if ($ProjectPath) {
     $candidate = [IO.Path]::GetFullPath($ProjectPath)
     if (-not $candidate.StartsWith($projectRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) -and

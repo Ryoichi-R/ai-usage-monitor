@@ -4,7 +4,8 @@ param(
     [string]$Runtime = 'win-x64',
     [string]$OutputDir,
     [string]$ManagedRoot,
-    [string]$BuildArtifactsRoot
+    [string]$BuildArtifactsRoot,
+    [switch]$UseLegacyWpf
 )
 
 Set-StrictMode -Version Latest
@@ -28,7 +29,7 @@ function Assert-PathWithinRoot {
 }
 
 $projectRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot)).TrimEnd([IO.Path]::DirectorySeparatorChar)
-$project = Assert-PathWithinRoot -Path (Join-Path $projectRoot 'src/AiUsageMonitor.App/AiUsageMonitor.App.csproj') -Root $projectRoot
+$project = Assert-PathWithinRoot -Path (Join-Path $projectRoot $(if ($UseLegacyWpf) { 'src/AiUsageMonitor.App.WpfLegacy/AiUsageMonitor.App.WpfLegacy.csproj' } else { 'src/AiUsageMonitor.App.Windows/AiUsageMonitor.App.Windows.csproj' })) -Root $projectRoot
 $distributionDocuments = @(
     [pscustomobject]@{
         Name = 'LICENSE'

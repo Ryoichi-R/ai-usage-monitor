@@ -48,7 +48,7 @@ public sealed class CodexUsageClient : IAsyncDisposable
                     _configuration.CodexHomePath,
                     _configuration.StartupTimeout,
                     _configuration.ProcessLifetimeGuardFactory,
-                    cancellationToken).ConfigureAwait(false);
+                    _configuration.ProcessLauncher, cancellationToken).ConfigureAwait(false);
                 _server.Connection.Notification += OnNotification;
             }
             JsonElement account = await _server.Connection.RequestAsync("account/read", new { refreshToken = false }, TimeSpan.FromSeconds(10), cancellationToken).ConfigureAwait(false);
@@ -61,6 +61,11 @@ public sealed class CodexUsageClient : IAsyncDisposable
         {
             await ResetAsync().ConfigureAwait(false);
             return Result(Unavailable(now, UsageAvailability.Unavailable, "RPC_TIMEOUT"), identity);
+        }
+        catch (OperationCanceledException)
+        {
+            await ResetAsync().ConfigureAwait(false);
+            throw;
         }
         catch (Exception exception) when (
             exception is InvalidDataException or

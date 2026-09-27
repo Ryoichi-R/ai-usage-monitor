@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    macOS専用のPlatform実装（Phase 3）。NSWindowへのobjc_msgSendとCoreGraphicsのP/Invokeを
+    ここへ閉じ込め、上位（App.UI）からは IWidgetLayerController 等の抽象だけが見える（D9）。
+    net10.0でビルドできるが、実行時の呼出しはmacOSでのみ有効。
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AiUsageMonitor.Platform\AiUsageMonitor.Platform.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="AiUsageMonitor.Platform.Mac.Tests" />
+  </ItemGroup>
+  <PropertyGroup>
+    <SupervisorOutput>$(BaseIntermediateOutputPath)$(Configuration)/native/ai-usage-process-supervisor</SupervisorOutput>
+  </PropertyGroup>
+  <Target Name="BuildProcessSupervisor" BeforeTargets="BeforeBuild" Condition="$([MSBuild]::IsOSPlatform('OSX'))"
+          Inputs="$(MSBuildProjectDirectory)/Native/process-supervisor.c" Outputs="$(SupervisorOutput)">
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(SupervisorOutput)'))" />
+    <Exec Command="clang -std=gnu17 -Wall -Wextra -Werror &quot;$(MSBuildProjectDirectory)/Native/process-supervisor.c&quot; -o &quot;$(SupervisorOutput)&quot;" />
+  </Target>
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+    <None Include="$(SupervisorOutput)" Link="ai-usage-process-supervisor" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

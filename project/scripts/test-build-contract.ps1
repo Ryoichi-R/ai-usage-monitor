@@ -162,7 +162,7 @@ try {
     # Runtime validation must fail before restore/build/publish for both the
     # facade itself and an existing facade child outside project.
     $rebuildScript = Join-Path $PSScriptRoot 'rebuild-ai-usage-monitor.ps1'
-    $pwshPath = Join-Path $PSHOME 'pwsh.exe'
+    $pwshPath = Join-Path $PSHOME $(if ($IsWindows) { 'pwsh.exe' } else { 'pwsh' })
     foreach ($facadeCandidate in $facadeRoot, $facadeChildCandidate) {
         & $pwshPath -NoLogo -NoProfile -File $rebuildScript `
             -Runtime win-x64 `
@@ -175,7 +175,14 @@ try {
         'Facade runtime rejection must not create AiUsageMonitorBuilds.'
     )
 
-    $appSourceRoot = Join-Path $projectRoot 'src\AiUsageMonitor.App'
+    foreach ($scriptText in @($publish, $rebuild)) {
+        Assert-Contract ($scriptText.Contains('src/AiUsageMonitor.App.Windows/AiUsageMonitor.App.Windows.csproj')) 'Avalonia Windows host must be the default publish target.'
+        Assert-Contract ($scriptText.Contains('$UseLegacyWpf')) 'The legacy fallback must remain explicit.'
+    }
+    [xml]$windowsHost = Get-Content -LiteralPath (Join-Path $projectRoot 'src/AiUsageMonitor.App.Windows/AiUsageMonitor.App.Windows.csproj') -Raw
+    Assert-Contract ($windowsHost.Project.PropertyGroup.AssemblyName -ceq 'AiUsageMonitor.App') 'The public executable identity must remain unchanged.'
+
+    $appSourceRoot = Join-Path $projectRoot 'src\AiUsageMonitor.App.WpfLegacy'
     $coordinatorConstructions = @(
         Get-ChildItem -LiteralPath $appSourceRoot -File -Filter '*.cs' |
             Select-String -Pattern 'new\s+ClaudeUsageSourceCoordinator\s*\('
@@ -328,7 +335,10 @@ try {
             'AiUsageMonitor.Claude.Windows',
             'AiUsageMonitor.Platform.Mac',
             'AiUsageMonitor.Claude.Mac',
-            'AiUsageMonitor.App'
+            'AiUsageMonitor.App',
+            'AiUsageMonitor.App.WpfLegacy',
+            'AiUsageMonitor.App.Windows',
+            'AiUsageMonitor.App.Mac'
         )
         $appUiReferenceNames = @(
             $appUiXml.SelectNodes('//ProjectReference') |

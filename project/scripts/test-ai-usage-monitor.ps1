@@ -8,6 +8,11 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+if ($IsMacOS) {
+    & (Join-Path $PSScriptRoot 'test-ai-usage-monitor-macos.ps1') @PSBoundParameters
+    exit $LASTEXITCODE
+}
+
 $projectRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot)).TrimEnd([IO.Path]::DirectorySeparatorChar)
 $resolver = Join-Path $PSScriptRoot 'resolve-ai-usage-monitor-build-paths.ps1'
 . $resolver
@@ -98,31 +103,54 @@ $env:AI_USAGE_MONITOR_TEST_ARTIFACTS_ROOT = $testOutput.ArtifactsPath
             Package = 'AiUsageMonitor.App.UI'
             Project = Join-Path $PSScriptRoot '..\tests\AiUsageMonitor.App.UI.Tests\AiUsageMonitor.App.UI.Tests.csproj'
         },
+        # 旧WPF版はsrc/AiUsageMonitor.App.WpfLegacyにあるが、配布互換のためassembly名は
+        # AiUsageMonitor.Appのまま。Packageはreport上のassembly名、SourceNameはsrc配下の実在folder名。
         [pscustomobject]@{
             Package = 'AiUsageMonitor.App'
-            Project = Join-Path $PSScriptRoot '..\tests\AiUsageMonitor.App.Tests\AiUsageMonitor.App.Tests.csproj'
+            SourceName = 'AiUsageMonitor.App.WpfLegacy'
+            ResultName = 'AiUsageMonitor.App.WpfLegacy'
+            Project = Join-Path $PSScriptRoot '..\tests\AiUsageMonitor.App.WpfLegacy.Tests\AiUsageMonitor.App.WpfLegacy.Tests.csproj'
         },
         [pscustomobject]@{
             Package = 'AiUsageMonitor.App'
-            ResultName = 'AiUsageMonitor.App.Startup'
-            Project = Join-Path $PSScriptRoot '..\tests\AiUsageMonitor.App.Startup.Tests\AiUsageMonitor.App.Startup.Tests.csproj'
+            SourceName = 'AiUsageMonitor.App.WpfLegacy'
+            ResultName = 'AiUsageMonitor.App.WpfLegacy.Startup'
+            Project = Join-Path $PSScriptRoot '..\tests\AiUsageMonitor.App.WpfLegacy.Startup.Tests\AiUsageMonitor.App.WpfLegacy.Startup.Tests.csproj'
         }
     )
+
+    $coverageTargets += [pscustomobject]@{
+        Package = 'AiUsageMonitor.App'
+        SourceName = 'AiUsageMonitor.App.Windows'
+        ResultName = 'AiUsageMonitor.App.Windows'
+        Project = Join-Path $PSScriptRoot '../tests/AiUsageMonitor.App.Windows.Tests/AiUsageMonitor.App.Windows.Tests.csproj'
+    }
 
     # 母集団から意図せず外れたproduction assemblyがあると、閾値を満たしていても実際には
     # 未検証のコードが混ざる。src配下の実在プロジェクトとcoverageTargetsを突き合わせ、
     # どちらにも属さないものが現れた時点で失敗させる。除外は理由付きでここに明示する。
-    # Phase 2でApp.UIが実装を持ったため、現在は除外対象なし。
-    $intentionallyUncoveredPackages = [ordered]@{}
+    # macOS専用プロジェクトはWindowsのcoverage母集団に含めない。Platform.MacはmacOSのtest実行
+    # （AiUsageMonitor.Mac.slnx）で検証し、App.MacはMac手動受入表（D4）で受け入れる。
+    $intentionallyUncoveredPackages = [ordered]@{
+        'AiUsageMonitor.Platform.Mac' = 'macOS-only native interop; verified by the macOS test run (AiUsageMonitor.Mac.slnx).'
+        'AiUsageMonitor.App.Mac' = 'macOS thin host; accepted through the Mac manual acceptance table (D4).'
+    }
     $productionPackages = @(
         Get-ChildItem -Path (Join-Path $projectRoot 'src') -Directory |
             Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName "$($_.Name).csproj") } |
             ForEach-Object { $_.Name }
     )
     $measuredPackages = @($coverageTargets | ForEach-Object { $_.Package } | Sort-Object -Unique)
+    $packageSourceNames = @{}
+    foreach ($target in $coverageTargets) {
+        $packageSourceNames[$target.Package] = if ($target.SourceName) { $target.SourceName } else { $target.Package }
+    }
+    $measuredSources = @($coverageTargets | ForEach-Object {
+        if ($_.SourceName) { $_.SourceName } else { $_.Package }
+    } | Sort-Object -Unique)
     $unaccountedPackages = @(
         $productionPackages | Where-Object {
-            $measuredPackages -notcontains $_ -and -not $intentionallyUncoveredPackages.Contains($_)
+            $measuredSources -notcontains $_ -and -not $intentionallyUncoveredPackages.Contains($_)
         }
     )
     if ($unaccountedPackages.Count -gt 0) {
@@ -183,7 +211,10 @@ $env:AI_USAGE_MONITOR_TEST_ARTIFACTS_ROOT = $testOutput.ArtifactsPath
                     continue
                 }
 
-                $packagePrefix = $packageName.TrimEnd('\') + '\'
+                # Both hosts preserve the public executable identity, but have distinct source folders.
+                # Host assemblies occur only in their own test process; never merge their line numbers.
+                $sourceName = if ($packageName -ceq 'AiUsageMonitor.App') { $target.SourceName } else { $packageSourceNames[$packageName] }
+                $packagePrefix = $sourceName.TrimEnd('\') + '\'
                 $srcMarker = '\src\' + $packagePrefix
                 $markerIndex = $sourcePath.IndexOf($srcMarker, [StringComparison]::OrdinalIgnoreCase)
                 if ($markerIndex -ge 0) {
@@ -195,15 +226,15 @@ $env:AI_USAGE_MONITOR_TEST_ARTIFACTS_ROOT = $testOutput.ArtifactsPath
                 # Coverlet uses three filename forms: repository path, package path, or
                 # package-relative path. Count a class only when its filename resolves to
                 # an actual source file in this production project.
-                $sourceFile = [IO.Path]::GetFullPath((Join-Path $projectRoot ("src\$packageName\$sourcePath")))
-                $sourceRoot = [IO.Path]::GetFullPath((Join-Path $projectRoot "src\$packageName"))
+                $sourceFile = [IO.Path]::GetFullPath((Join-Path $projectRoot ("src\$sourceName\$sourcePath")))
+                $sourceRoot = [IO.Path]::GetFullPath((Join-Path $projectRoot "src\$sourceName"))
                 if (-not $sourceFile.StartsWith($sourceRoot + [IO.Path]::DirectorySeparatorChar,
                         [StringComparison]::OrdinalIgnoreCase) -or
                     -not (Test-Path -LiteralPath $sourceFile -PathType Leaf)) {
                     continue
                 }
                 foreach ($line in @($class.lines.line)) {
-                    $key = '{0}|{1}|{2}' -f $packageName, $sourcePath, $line.number
+                    $key = '{0}|{1}|{2}' -f $sourceName, $sourcePath, $line.number
                     $hit = [int]$line.hits -gt 0
                     if (-not $lineCoverage.ContainsKey($key)) {
                         $lineCoverage[$key] = $hit

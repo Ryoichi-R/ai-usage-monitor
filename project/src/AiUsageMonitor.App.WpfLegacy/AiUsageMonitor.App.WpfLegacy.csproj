@@ -2,6 +2,11 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
+    <!-- Phase 2の並存期間中の旧WPF版。配布中の実行ファイル名（AiUsageMonitor.App.exe）、
+         自動起動登録、実行中検知、pack URIとの互換のため、Avalonia版App.Windowsが配布対象へ
+         切り替わるまでassembly名と名前空間を改称前の値に固定する。 -->
+    <AssemblyName>AiUsageMonitor.App</AssemblyName>
+    <RootNamespace>AiUsageMonitor.App</RootNamespace>
     <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -26,8 +31,8 @@
     <ProjectReference Include="..\AiUsageMonitor.Platform.Windows\AiUsageMonitor.Platform.Windows.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <InternalsVisibleTo Include="AiUsageMonitor.App.Tests" />
-    <InternalsVisibleTo Include="AiUsageMonitor.App.Startup.Tests" />
+    <InternalsVisibleTo Include="AiUsageMonitor.App.WpfLegacy.Tests" />
+    <InternalsVisibleTo Include="AiUsageMonitor.App.WpfLegacy.Startup.Tests" />
   </ItemGroup>
   <ItemGroup>
     <Resource Include="Assets\ai-usage-monitor.ico" />

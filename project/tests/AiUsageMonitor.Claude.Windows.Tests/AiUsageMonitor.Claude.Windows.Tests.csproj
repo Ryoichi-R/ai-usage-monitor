@@ -21,7 +21,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="..\fixtures\claude-cli-screens\*.txt" LinkBase="fixtures\claude-cli-screens" CopyToOutputDirectory="PreserveNewest" />
-    <None Include="..\..\src\AiUsageMonitor.App\Assets\claude-statusline-bridge.ps1" LinkBase="assets" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\AiUsageMonitor.App.WpfLegacy\Assets\claude-statusline-bridge.ps1" LinkBase="assets" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\TestSupport\FakeExecutableLocator.cs" Link="TestSupport\FakeExecutableLocator.cs" />

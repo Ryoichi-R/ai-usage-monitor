@@ -1,0 +1,295 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:settings="using:AiUsageMonitor.App.UI.Settings"
+        x:Class="AiUsageMonitor.App.UI.Views.SettingsWindow"
+        x:CompileBindings="True"
+        Title="AI Usage Monitor 設定"
+        Width="720"
+        Height="610"
+        MinWidth="680"
+        MinHeight="520"
+        WindowStartupLocation="CenterOwner"
+        CanResize="True"
+        ShowInTaskbar="False">
+  <Window.Styles>
+    <StyleInclude Source="avares://Avalonia.Controls.ColorPicker/Themes/Fluent/Fluent.xaml"/>
+    <Style Selector="TabControl#CategoryTabs > TabItem">
+      <Setter Property="Width" Value="148"/>
+      <Setter Property="HorizontalContentAlignment" Value="Left"/>
+      <Setter Property="Padding" Value="12,9"/>
+      <Setter Property="FontSize" Value="14"/>
+      <Setter Property="MinHeight" Value="0"/>
+    </Style>
+    <Style Selector="CheckBox">
+      <Setter Property="Margin" Value="4,7"/>
+    </Style>
+    <Style Selector="Grid.field">
+      <Setter Property="Margin" Value="4,3"/>
+    </Style>
+    <Style Selector="TextBlock.hint">
+      <Setter Property="Foreground" Value="Gray"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+    <Style Selector="TextBlock.page-title">
+      <Setter Property="FontSize" Value="18"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Margin" Value="0,0,0,12"/>
+    </Style>
+  </Window.Styles>
+
+  <DockPanel Margin="16">
+    <Grid DockPanel.Dock="Bottom" Margin="0,14,0,0" ColumnDefinitions="*,Auto">
+      <TextBlock x:Name="ValidationMessage"
+                 Foreground="Crimson"
+                 VerticalAlignment="Center"
+                 TextWrapping="Wrap"
+                 AutomationProperties.LiveSetting="Assertive"/>
+      <StackPanel Grid.Column="1" Orientation="Horizontal">
+        <Button x:Name="CancelButton"
+                Content="キャンセル"
+                Width="88"
+                Margin="8,0"
+                IsCancel="True"
+                Click="OnCancelClick"/>
+        <Button x:Name="SaveButton"
+                Content="保存"
+                Width="88"
+                IsDefault="True"
+                Click="OnSaveClick"/>
+      </StackPanel>
+    </Grid>
+
+    <TabControl x:Name="CategoryTabs" TabStripPlacement="Left" SelectedIndex="0">
+      <TabItem Header="全体設定">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel Margin="16">
+            <TextBlock Classes="page-title" Text="全体設定"/>
+            <CheckBox x:Name="ClickThroughBox" Content="クリックを透過する"/>
+            <CheckBox x:Name="TopmostBox" Content="常に手前に表示する"/>
+            <CheckBox x:Name="StartupBox" Content="Windowsログオン時に自動起動する"/>
+            <Grid Classes="field" Margin="4,14,4,3" ColumnDefinitions="210,*">
+              <TextBlock Text="表示モード" VerticalAlignment="Center"/>
+              <ComboBox x:Name="DisplayModeBox" Grid.Column="1" HorizontalAlignment="Stretch"
+                        AutomationProperties.Name="表示モード"/>
+            </Grid>
+            <Grid Classes="field" Margin="4,14,4,3" ColumnDefinitions="210,*">
+              <TextBlock Text="表示倍率（75～200%）" VerticalAlignment="Center"/>
+              <TextBox x:Name="ScaleBox" Grid.Column="1" AutomationProperties.Name="表示倍率"/>
+            </Grid>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem Header="表示位置">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel Margin="16">
+            <TextBlock Classes="page-title" Text="表示位置"/>
+            <StackPanel Orientation="Horizontal" Margin="4,0,4,10">
+              <RadioButton x:Name="PresetPlacementBox"
+                           GroupName="Placement"
+                           Content="四隅・余白を使用"
+                           Margin="0,0,18,0"/>
+              <RadioButton x:Name="CustomPlacementBox"
+                           GroupName="Placement"
+                           Content="自由配置（保存済み位置）"/>
+            </StackPanel>
+            <Grid Classes="field" ColumnDefinitions="210,*">
+              <TextBlock Text="表示モニター" VerticalAlignment="Center"/>
+              <ComboBox x:Name="MonitorBox" Grid.Column="1" HorizontalAlignment="Stretch"/>
+            </Grid>
+            <Grid Classes="field" ColumnDefinitions="210,*">
+              <TextBlock Text="基準位置" VerticalAlignment="Center"/>
+              <ComboBox x:Name="AnchorBox" Grid.Column="1" HorizontalAlignment="Stretch"/>
+            </Grid>
+            <Grid Classes="field" ColumnDefinitions="210,*">
+              <TextBlock Text="水平余白（0～200 DIP）" VerticalAlignment="Center"/>
+              <TextBox x:Name="HorizontalMarginBox" Grid.Column="1" AutomationProperties.Name="水平余白"/>
+            </Grid>
+            <Grid Classes="field" ColumnDefinitions="210,*">
+              <TextBlock Text="垂直余白（0～200 DIP）" VerticalAlignment="Center"/>
+              <TextBox x:Name="VerticalMarginBox" Grid.Column="1" AutomationProperties.Name="垂直余白"/>
+            </Grid>
+            <WrapPanel Margin="4,12,4,4">
+              <Button Content="現在位置を使用" Padding="12,5" Margin="0,0,8,0" Click="OnSaveCurrentPositionClick"/>
+              <Button Content="既定の右上へ戻す" Padding="12,5" Click="OnResetPositionClick"/>
+            </WrapPanel>
+            <TextBlock x:Name="PlacementStatusText" Classes="hint" Margin="4,8"/>
+            <TextBlock Classes="hint" Margin="4,12"
+                       Text="クリック透過を解除すると、メイン表示をドラッグして移動できます。ドラッグ後の位置は自動保存されます。"/>
+            <TextBlock Classes="hint" Margin="4,0,4,12"
+                       Text="表示倍率を変更すると、保存済みの位置は新しいウィジェットサイズに合わせて再計算されます。"/>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem Header="外観">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel Margin="16">
+            <TextBlock Classes="page-title" Text="外観"/>
+            <TextBlock Text="フォント（空欄はシステム既定）" Margin="4,0,4,2"/>
+            <TextBox x:Name="FontFamilyBox" Margin="4" AutomationProperties.Name="フォント"/>
+            <TextBlock Text="色（#RRGGBB または #AARRGGBB）" Margin="4,12,4,4" FontWeight="SemiBold"/>
+            <Grid Classes="field" ColumnDefinitions="210,*,Auto">
+              <TextBlock Text="主要文字" VerticalAlignment="Center"/>
+              <TextBox x:Name="ForegroundColorBox" Grid.Column="1" AutomationProperties.Name="主要文字色"/>
+              <Button Grid.Column="2" Content="選択…" Padding="10,3" Margin="6,0,0,0" Tag="ForegroundColorBox" Click="OnSelectColorClick"/>
+            </Grid>
+            <Grid Classes="field" ColumnDefinitions="210,*,Auto">
+              <TextBlock Text="補助文字" VerticalAlignment="Center"/>
+              <TextBox x:Name="MutedColorBox" Grid.Column="1" AutomationProperties.Name="補助文字色"/>
+              <Button Grid.Column="2" Content="選択…" Padding="10,3" Margin="6,0,0,0" Tag="MutedColorBox" Click="OnSelectColorClick"/>
+            </Grid>
+            <Grid Classes="field" ColumnDefinitions="210,*,Auto">
+              <TextBlock Text="アクセント" VerticalAlignment="Center"/>
+              <TextBox x:Name="AccentColorBox" Grid.Column="1" AutomationProperties.Name="アクセント色"/>
+              <Button Grid.Column="2" Content="選択…" Padding="10,3" Margin="6,0,0,0" Tag="AccentColorBox" Click="OnSelectColorClick"/>
+            </Grid>
+            <Grid Classes="field" ColumnDefinitions="210,*,Auto">
+              <TextBlock Text="警告" VerticalAlignment="Center"/>
+              <TextBox x:Name="WarningColorBox" Grid.Column="1" AutomationProperties.Name="警告色"/>
+              <Button Grid.Column="2" Content="選択…" Padding="10,3" Margin="6,0,0,0" Tag="WarningColorBox" Click="OnSelectColorClick"/>
+            </Grid>
+            <Grid Classes="field" ColumnDefinitions="210,*,Auto">
+              <TextBlock Text="危険" VerticalAlignment="Center"/>
+              <TextBox x:Name="DangerColorBox" Grid.Column="1" AutomationProperties.Name="危険色"/>
+              <Button Grid.Column="2" Content="選択…" Padding="10,3" Margin="6,0,0,0" Tag="DangerColorBox" Click="OnSelectColorClick"/>
+            </Grid>
+            <CheckBox x:Name="BackgroundEnabledBox" Content="背景を表示する" Margin="4,16,4,6"/>
+            <CheckBox x:Name="HideBackgroundBox" Content="他のウィンドウと重なる部分では背景だけ隠す"/>
+            <TextBlock Classes="hint" Margin="4,0,4,8"
+                       Text="常に手前に表示する場合、情報文字を手前に残し、背景だけを通常ウィンドウの後ろへ分離します。"/>
+            <Grid Classes="field" ColumnDefinitions="210,*,Auto">
+              <TextBlock Text="背景色" VerticalAlignment="Center"/>
+              <TextBox x:Name="BackgroundColorBox" Grid.Column="1" AutomationProperties.Name="背景色"/>
+              <Button Grid.Column="2" Content="選択…" Padding="10,3" Margin="6,0,0,0" Tag="BackgroundColorBox" Click="OnSelectColorClick"/>
+            </Grid>
+            <Grid Classes="field" ColumnDefinitions="210,*">
+              <TextBlock Text="背景の不透明度（0～100%）" VerticalAlignment="Center"/>
+              <TextBox x:Name="BackgroundOpacityBox" Grid.Column="1" AutomationProperties.Name="背景の不透明度"/>
+            </Grid>
+            <Grid Classes="field" ColumnDefinitions="210,*">
+              <TextBlock Text="背景の塗り方" VerticalAlignment="Center"/>
+              <ComboBox x:Name="BackgroundFillModeBox" Grid.Column="1" HorizontalAlignment="Stretch"
+                        AutomationProperties.Name="背景の塗り方"/>
+            </Grid>
+            <Grid Classes="field" ColumnDefinitions="210,*">
+              <TextBlock Text="フェード幅（5～50%）" VerticalAlignment="Center"/>
+              <TextBox x:Name="BackgroundFadeBox" Grid.Column="1" AutomationProperties.Name="フェード幅"/>
+            </Grid>
+            <Border x:Name="BackgroundPreview"
+                    Width="280"
+                    Height="84"
+                    Margin="4,14,4,8"
+                    CornerRadius="5"
+                    HorizontalAlignment="Left"
+                    BorderBrush="#808080"
+                    BorderThickness="1">
+              <TextBlock Text="背景プレビュー"
+                         HorizontalAlignment="Center"
+                         VerticalAlignment="Center"
+                         Foreground="White"/>
+            </Border>
+            <TextBlock Classes="hint" Margin="4,0,4,12"
+                       Text="背景の不透明度は背景だけに適用されます。既存のウィンドウ全体の不透明度とは別設定です。白い背景では文字色も併せて調整してください。"/>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem Header="CODEX">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel Margin="16">
+            <TextBlock Classes="page-title" Text="CODEX"/>
+            <CheckBox x:Name="ShowCodexBox" Content="Codex使用上限を表示する"/>
+            <CheckBox x:Name="ShowAdditionalUsageBox" Content="追加利用額を表示する"/>
+            <CheckBox x:Name="ShowCreditsBox" Content="クレジット残高を表示する"/>
+            <TextBlock Text="監視アカウント" Margin="4,14,4,4" FontWeight="SemiBold"/>
+            <Grid Margin="8,0,8,2" ColumnDefinitions="110,*,55,55">
+              <TextBlock Text="表示名" FontWeight="SemiBold"/>
+              <TextBlock Grid.Column="1" Text="CODEX_HOME（既定は空欄）" FontWeight="SemiBold" Margin="6,0,0,0"/>
+              <TextBlock Grid.Column="2" Text="監視" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+              <TextBlock Grid.Column="3" Text="表示" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+            </Grid>
+            <ListBox x:Name="CodexAccountsList" Margin="4" MinHeight="150" SelectionMode="Single">
+              <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="settings:CodexAccountEditor">
+                  <Grid ColumnDefinitions="110,*,55,55">
+                    <TextBox x:Name="AccountDisplayNameBox" Text="{Binding DisplayName}"
+                             AutomationProperties.Name="表示名"/>
+                    <TextBox x:Name="AccountHomeBox" Grid.Column="1" Margin="6,0,0,0"
+                             Text="{Binding CodexHomePath}"
+                             IsReadOnly="{Binding IsDefault}"
+                             AutomationProperties.Name="CODEX_HOME"/>
+                    <CheckBox Grid.Column="2" Margin="0" HorizontalAlignment="Center"
+                              IsChecked="{Binding Enabled}" AutomationProperties.Name="監視"/>
+                    <CheckBox Grid.Column="3" Margin="0" HorizontalAlignment="Center"
+                              IsChecked="{Binding ShowInWidget}" AutomationProperties.Name="表示"/>
+                  </Grid>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+            <StackPanel Orientation="Horizontal" Margin="4,0,4,6">
+              <Button Content="追加" Padding="12,4" Margin="0,0,8,0" Click="OnAddCodexAccountClick"/>
+              <Button Content="フォルダー選択…" Padding="12,4" Margin="0,0,8,0" Click="OnSelectCodexHomeClick"/>
+              <Button Content="選択した設定を削除" Padding="12,4" Click="OnRemoveCodexAccountClick"/>
+            </StackPanel>
+            <TextBlock Classes="hint" Margin="4,0,4,8" Text="設定を削除してもCODEX_HOMEの実フォルダーは削除しません。"/>
+            <TextBlock Text="Codex実行ファイル（空欄は自動検出）" Margin="4,12,4,0"/>
+            <TextBox x:Name="ExecutableBox" Margin="4"/>
+            <Grid Classes="field" ColumnDefinitions="210,*">
+              <TextBlock Text="更新間隔（60～900秒）" VerticalAlignment="Center"/>
+              <TextBox x:Name="RefreshBox" Grid.Column="1" AutomationProperties.Name="更新間隔"/>
+            </Grid>
+            <Grid Classes="field" ColumnDefinitions="210,*">
+              <TextBlock Text="起動待ち（5～120秒）" VerticalAlignment="Center"/>
+              <TextBox x:Name="StartupTimeoutBox" Grid.Column="1" AutomationProperties.Name="起動待ち"/>
+            </Grid>
+            <TextBlock Classes="hint" Margin="4,12" Text="バーと数値は使用済みではなく残り割合を示します。"/>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+
+      <TabItem Header="CLAUDE CODE">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel Margin="16">
+            <TextBlock Classes="page-title" Text="CLAUDE CODE"/>
+            <CheckBox x:Name="ShowClaudeBox" Content="Claude Code使用上限を表示する"/>
+            <TextBlock Text="取得方法" Margin="4,12,4,2"/>
+            <ComboBox x:Name="ClaudeModeBox" Margin="4" HorizontalAlignment="Stretch" AutomationProperties.Name="Claude取得方法"/>
+            <TextBlock Text="Claude実行ファイル（空欄は公式install経路から自動検出）" Margin="4,8,4,2"/>
+            <TextBox x:Name="ClaudeExecutableBox" Margin="4" AutomationProperties.Name="Claude実行ファイル"/>
+            <Border BorderBrush="#3A3A3A" BorderThickness="1" CornerRadius="5" Padding="10" Margin="4,6,4,10">
+              <StackPanel>
+                <TextBlock Text="接続状態" FontWeight="SemiBold"/>
+                <TextBlock x:Name="ClaudeConnectionStatusText"
+                           Margin="0,4,0,8"
+                           TextWrapping="Wrap"
+                           AutomationProperties.LiveSetting="Polite"/>
+                <Button x:Name="ClaudeSetupButton"
+                        Content="Claude Code連携を設定する"
+                        HorizontalAlignment="Left"
+                        Padding="12,5"
+                        Click="OnOpenClaudeSetupClick"/>
+              </StackPanel>
+            </Border>
+            <TextBlock Classes="hint" Margin="4,4,4,12"
+                       Text="自動取得は署名済みの公式Claude CLIを隠しセッションで起動し、/usageだけを送ります。認証情報やユーザー設定は読みません。初回のみ専用フォルダーの信頼承認が必要です。"/>
+            <TextBlock Classes="hint" Margin="4,0,4,12"
+                       Text="HUDのCLIは/usage画面の読取り完了時刻、SL受信はstatusLineのpipe受信時刻です。どちらもserver measurement timestampではありません。"/>
+            <Expander Header="常駐CLIのstatusLineも利用する場合の設定例" Margin="4,4,4,0" HorizontalAlignment="Stretch">
+              <StackPanel>
+                <TextBox x:Name="ClaudeExampleBox"
+                         IsReadOnly="True"
+                         TextWrapping="Wrap"
+                         AcceptsReturn="True"
+                         MinHeight="96"
+                         MaxHeight="180"
+                         Margin="0,6,0,4"/>
+                <Button Content="Claude Code設定をコピー" HorizontalAlignment="Left" Padding="12,5" Click="OnCopyClaudeExampleClick"/>
+              </StackPanel>
+            </Expander>
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+    </TabControl>
+  </DockPanel>
+</Window>

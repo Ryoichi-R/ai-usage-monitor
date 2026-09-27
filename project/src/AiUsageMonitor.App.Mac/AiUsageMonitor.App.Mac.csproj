@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    macOS用thin host（D9）。App.UIのWidgetHostへPlatform.Macの実装を注入して起動する。
+    既定は製品動作（設定の保存・Codex取得・メニューバー操作）。デモ起動オプションを付けると固定データで
+    層・透過を手動確認する（P0-2の12系再確認用）。
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>AiUsageMonitor.App.Mac</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AiUsageMonitor.App.UI\AiUsageMonitor.App.UI.csproj" />
+    <ProjectReference Include="..\AiUsageMonitor.Platform.Mac\AiUsageMonitor.Platform.Mac.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="../../README.md" Link="README.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup><InternalsVisibleTo Include="AiUsageMonitor.App.Mac.Tests" /></ItemGroup>
+</Project>

@@ -64,7 +64,7 @@
   "validation": {
     "required_receipt_types": ["quality", "manual-acceptance", "clean-verification"],
     "expected_test_projects": [
-      "AiUsageMonitor.App.Tests",
+      "AiUsageMonitor.App.WpfLegacy.Tests",
       "AiUsageMonitor.Claude.Tests",
       "AiUsageMonitor.Claude.Windows.Tests",
       "AiUsageMonitor.Codex.Tests",

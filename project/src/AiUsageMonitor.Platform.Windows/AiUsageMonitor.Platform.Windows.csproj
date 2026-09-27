@@ -15,6 +15,6 @@
   <ItemGroup>
     <InternalsVisibleTo Include="AiUsageMonitor.App" />
     <InternalsVisibleTo Include="AiUsageMonitor.Platform.Windows.Tests" />
-    <InternalsVisibleTo Include="AiUsageMonitor.App.Tests" />
+    <InternalsVisibleTo Include="AiUsageMonitor.App.WpfLegacy.Tests" />
   </ItemGroup>
 </Project>

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using AiUsageMonitor.Platform;
 using System.Reflection;
 using AiUsageMonitor.Codex.Protocol;
 
@@ -11,6 +12,7 @@ public sealed class CodexAppServerProcess : IAsyncDisposable
     private JsonRpcConnection? _connection;
     private Task? _stderrTask;
     private IDisposable? _lifetimeGuard;
+    private IManagedProcessSession? _session;
     private int _disposed;
 
     public JsonRpcConnection Connection =>
@@ -22,62 +24,84 @@ public sealed class CodexAppServerProcess : IAsyncDisposable
         CancellationToken cancellationToken) =>
         StartAsync(executablePath, null, startupTimeout, null, cancellationToken);
 
+    public Task StartAsync(string executablePath, string? codexHomePath, TimeSpan startupTimeout,
+        Func<System.Diagnostics.Process, IDisposable>? lifetimeGuardFactory, CancellationToken cancellationToken) =>
+        StartAsync(executablePath, codexHomePath, startupTimeout, lifetimeGuardFactory, null, cancellationToken);
+
     public async Task StartAsync(
         string executablePath,
         string? codexHomePath,
         TimeSpan startupTimeout,
         Func<System.Diagnostics.Process, IDisposable>? lifetimeGuardFactory,
-        CancellationToken cancellationToken)
+        IManagedProcessLauncher? processLauncher, CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-        if (_process is not null)
+        if (_process is not null || _session is not null)
             throw new InvalidOperationException("App server is already started.");
-
-        var startInfo = new ProcessStartInfo(executablePath)
-        {
-            UseShellExecute = false,
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true,
-        };
-        startInfo.ArgumentList.Add("app-server");
-        if (codexHomePath is not null)
-            startInfo.Environment["CODEX_HOME"] = codexHomePath;
-        _process = new System.Diagnostics.Process { StartInfo = startInfo };
-        if (!_process.Start())
-            throw new InvalidOperationException("Failed to start Codex app-server.");
-        try
-        {
-            _lifetimeGuard = lifetimeGuardFactory?.Invoke(_process);
-        }
-        catch
-        {
-            if (!_process.HasExited)
-                _process.Kill(entireProcessTree: true);
-            await _process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-            throw;
-        }
-
-        _stderrTask = DrainStderrAsync(_process.StandardError, _processLifetime.Token);
-        _connection = new JsonRpcConnection(_process.StandardOutput, _process.StandardInput);
-        _connection.Start();
 
         using var startupCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         startupCts.CancelAfter(startupTimeout);
-        await _connection.RequestAsync(
-            "initialize",
-            new
+        startupCts.Token.ThrowIfCancellationRequested();
+        try
+        {
+            var startInfo = new ProcessStartInfo(executablePath)
             {
-                clientInfo = new
+                UseShellExecute = false,
+                RedirectStandardInput = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+            };
+            startInfo.ArgumentList.Add("app-server");
+            if (codexHomePath is not null)
+                startInfo.Environment["CODEX_HOME"] = codexHomePath;
+            if (processLauncher is not null)
+            {
+                _session = await processLauncher.StartAsync(startInfo, startupCts.Token).ConfigureAwait(false);
+                _stderrTask = DrainStderrAsync(_session.StandardError, _processLifetime.Token);
+                _connection = new JsonRpcConnection(_session.StandardOutput, _session.StandardInput);
+            }
+            else
+            {
+                _process = new System.Diagnostics.Process { StartInfo = startInfo };
+                if (!_process.Start())
+                    throw new InvalidOperationException("Failed to start Codex app-server.");
+                try
                 {
-                    name = "ai-usage-monitor",
-                    title = "AI Usage Monitor",
-                    version = GetClientVersion(),
+                    _lifetimeGuard = lifetimeGuardFactory?.Invoke(_process);
                 }
-            },
-            startupCts.Token).ConfigureAwait(false);
-        await _connection.NotifyAsync("initialized", new { }, startupCts.Token).ConfigureAwait(false);
+                catch
+                {
+                    if (!_process.HasExited)
+                        _process.Kill(entireProcessTree: true);
+                    await _process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+                    throw;
+                }
+
+                _stderrTask = DrainStderrAsync(_process.StandardError, _processLifetime.Token);
+                _connection = new JsonRpcConnection(_process.StandardOutput, _process.StandardInput);
+            }
+            _connection.Start();
+
+            await _connection.RequestAsync(
+                "initialize",
+                new
+                {
+                    clientInfo = new
+                    {
+                        name = "ai-usage-monitor",
+                        title = "AI Usage Monitor",
+                        version = GetClientVersion(),
+                    }
+                },
+                startupCts.Token).ConfigureAwait(false);
+            await _connection.NotifyAsync("initialized", new { }, startupCts.Token).ConfigureAwait(false);
+        }
+        catch
+        {
+            await DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
     }
 
     internal static string GetClientVersion()
@@ -126,6 +150,7 @@ public sealed class CodexAppServerProcess : IAsyncDisposable
         }
 
         _processLifetime.Cancel();
+        if (_session is not null) await _session.DisposeAsync().ConfigureAwait(false);
         if (_stderrTask is not null)
             await _stderrTask.ConfigureAwait(false);
         _process?.Dispose();

@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
-    <Project Path="src/AiUsageMonitor.App/AiUsageMonitor.App.csproj" />
+    <Project Path="src/AiUsageMonitor.App.Windows/AiUsageMonitor.App.Windows.csproj" />
+    <Project Path="src/AiUsageMonitor.App.WpfLegacy/AiUsageMonitor.App.WpfLegacy.csproj" />
     <Project Path="src/AiUsageMonitor.App.UI/AiUsageMonitor.App.UI.csproj" />
     <Project Path="src/AiUsageMonitor.Codex/AiUsageMonitor.Codex.csproj" />
     <Project Path="src/AiUsageMonitor.Claude/AiUsageMonitor.Claude.csproj" />
@@ -11,8 +12,9 @@
     <Project Path="src/AiUsageMonitor.Platform.Windows/AiUsageMonitor.Platform.Windows.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/AiUsageMonitor.App.Tests/AiUsageMonitor.App.Tests.csproj" />
-    <Project Path="tests/AiUsageMonitor.App.Startup.Tests/AiUsageMonitor.App.Startup.Tests.csproj" />
+    <Project Path="tests/AiUsageMonitor.App.Windows.Tests/AiUsageMonitor.App.Windows.Tests.csproj" />
+    <Project Path="tests/AiUsageMonitor.App.WpfLegacy.Tests/AiUsageMonitor.App.WpfLegacy.Tests.csproj" />
+    <Project Path="tests/AiUsageMonitor.App.WpfLegacy.Startup.Tests/AiUsageMonitor.App.WpfLegacy.Startup.Tests.csproj" />
     <Project Path="tests/AiUsageMonitor.App.UI.Tests/AiUsageMonitor.App.UI.Tests.csproj" />
     <Project Path="tests/AiUsageMonitor.Claude.Cli.Tests/AiUsageMonitor.Claude.Cli.Tests.csproj" />
     <Project Path="tests/AiUsageMonitor.Claude.Tests/AiUsageMonitor.Claude.Tests.csproj" />

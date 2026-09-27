@@ -15,7 +15,7 @@ if ($ProjectPath) { $formatArgs += @('-ProjectPath', $ProjectPath) }
 $formatExit = $LASTEXITCODE
 $buildExit = 0
 if ($formatExit -eq 0 -and $Mode -eq 'Full') {
-    & dotnet build (Join-Path $projectRoot 'AiUsageMonitor.slnx') -c Release --no-restore --warnaserror
+    & dotnet build (Join-Path $projectRoot $(if ($IsWindows) { 'AiUsageMonitor.slnx' } else { 'AiUsageMonitor.Mac.slnx' })) -c Release --no-restore --warnaserror
     $buildExit = $LASTEXITCODE
 }
 $exitCode = if ($formatExit -ne 0) { $formatExit } else { $buildExit }

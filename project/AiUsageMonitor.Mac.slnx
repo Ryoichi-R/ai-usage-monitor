@@ -5,7 +5,7 @@
     macOSの復元対象へ混入しないことをPhase 7で回帰テストする）。
     Phase 1時点でmacOS向けの実装を持つのはCore/Claude/Codex/Claude.Cli/Platformと、
     まだ実装を持たないApp.UI（D9の参照方向を先に固定するための器）である。
-    Claude.Mac / Platform.Mac / App.Mac はPhase 3以降にこのファイルへ追加する。
+    Phase 3でPlatform.Mac（NSWindow層制御）とApp.Mac（最小host）を追加した。Claude.MacはPhase 6で追加する。
   -->
   <Folder Name="/src/">
     <Project Path="src/AiUsageMonitor.Core/AiUsageMonitor.Core.csproj" />
@@ -14,14 +14,18 @@
     <Project Path="src/AiUsageMonitor.Codex/AiUsageMonitor.Codex.csproj" />
     <Project Path="src/AiUsageMonitor.Platform/AiUsageMonitor.Platform.csproj" />
     <Project Path="src/AiUsageMonitor.App.UI/AiUsageMonitor.App.UI.csproj" />
+    <Project Path="src/AiUsageMonitor.Platform.Mac/AiUsageMonitor.Platform.Mac.csproj" />
+    <Project Path="src/AiUsageMonitor.App.Mac/AiUsageMonitor.App.Mac.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/AiUsageMonitor.App.Mac.Tests/AiUsageMonitor.App.Mac.Tests.csproj" />
     <Project Path="tests/AiUsageMonitor.App.UI.Tests/AiUsageMonitor.App.UI.Tests.csproj" />
     <Project Path="tests/AiUsageMonitor.Claude.Cli.Tests/AiUsageMonitor.Claude.Cli.Tests.csproj" />
     <Project Path="tests/AiUsageMonitor.Claude.Tests/AiUsageMonitor.Claude.Tests.csproj" />
     <Project Path="tests/AiUsageMonitor.Codex.Tests/AiUsageMonitor.Codex.Tests.csproj" />
     <Project Path="tests/AiUsageMonitor.Core.Tests/AiUsageMonitor.Core.Tests.csproj" />
     <Project Path="tests/AiUsageMonitor.Platform.Tests/AiUsageMonitor.Platform.Tests.csproj" />
+    <Project Path="tests/AiUsageMonitor.Platform.Mac.Tests/AiUsageMonitor.Platform.Mac.Tests.csproj" />
   </Folder>
   <Folder Name="/tests/support/">
     <Project Path="tests/support/AiUsageMonitor.FakeAppServer/AiUsageMonitor.FakeAppServer.csproj" />

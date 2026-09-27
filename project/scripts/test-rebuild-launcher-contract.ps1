@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param()
+param([switch]$StaticOnly)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -172,6 +172,13 @@ Assert-Contract ($dispatcherSource.Contains('if /i "%NATIVE_ARCH%"=="AMD64" goto
 Assert-Contract ($dispatcherSource.Contains('if /i "%NATIVE_ARCH%"=="ARM64" goto :arm64', [StringComparison]::Ordinal)) (
     'ARM64 must route to ARM64.'
 )
+
+if ($StaticOnly) {
+    if ($failures.Count -gt 0) { throw ($failures -join [Environment]::NewLine) }
+    Write-Host 'Launcher source contracts passed. Windows BAT execution was not tested.'
+    return
+}
+if (-not $IsWindows) { throw 'WINDOWS_REQUIRED: use -StaticOnly for source contracts on macOS/Linux.' }
 
 $workspaceRoot = [IO.Path]::GetFullPath((Join-Path $projectRoot '..\..'))
 $testResultsRoot = Join-Path $workspaceRoot 'TestResults'

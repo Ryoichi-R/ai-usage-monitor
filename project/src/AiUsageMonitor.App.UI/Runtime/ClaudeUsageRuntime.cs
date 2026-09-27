@@ -247,7 +247,7 @@ internal sealed class ClaudeUsageRuntime
     }
 }
 
-internal sealed class ClaudeActiveSourceConfiguration
+public sealed class ClaudeActiveSourceConfiguration
 {
     public ClaudeActiveSourceConfiguration(
         string? executablePath,
