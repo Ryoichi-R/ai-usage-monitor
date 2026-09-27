@@ -62,6 +62,13 @@ if ($LASTEXITCODE -ne 0) { throw 'ICNS_FAILED' }
 foreach ($document in @('LICENSE', 'THIRD-PARTY-NOTICES.md', 'README.md')) {
     Copy-Item -LiteralPath (Join-Path $root $document) -Destination $resources
 }
+# Third-party license texts referenced by THIRD-PARTY-NOTICES.md ship verbatim with the bundle.
+$licenses = Join-Path $resources 'licenses'
+New-Item -ItemType Directory -Path $licenses | Out-Null
+foreach ($license in @(Get-ChildItem -LiteralPath (Join-Path $root 'licenses') -File | Where-Object Name -ne '.gitattributes')) {
+    Copy-Item -LiteralPath $license.FullName -Destination $licenses
+}
+if (@(Get-ChildItem -LiteralPath $licenses -File).Count -eq 0) { throw 'LICENSE_TEXTS_MISSING' }
 # Sign nested native binaries first, then the enclosing local-only bundle.
 foreach ($file in @(Get-ChildItem -LiteralPath $macos -File -Recurse | Sort-Object { if ($_.Extension -eq ".dll") { 0 } else { 1 } })) {
     $description = & /usr/bin/file -b $file.FullName
