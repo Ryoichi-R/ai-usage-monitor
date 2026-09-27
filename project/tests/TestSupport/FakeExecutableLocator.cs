@@ -38,23 +38,48 @@ public static class FakeExecutableLocator
         string extension = OperatingSystem.IsWindows() ? ".exe" : string.Empty;
         string executableName = projectName + extension;
         string? artifactsRoot = Environment.GetEnvironmentVariable(ArtifactsRootEnvironmentVariable);
+        string executablePath;
         if (!string.IsNullOrWhiteSpace(artifactsRoot))
         {
-            return FindUnderIsolatedArtifactsRoot(artifactsRoot, projectName, executableName, displayName);
+            executablePath = FindUnderIsolatedArtifactsRoot(artifactsRoot, projectName, executableName, displayName);
+        }
+        else
+        {
+            executablePath = Path.GetFullPath(
+                Path.Combine(
+                    AppContext.BaseDirectory,
+                    "..", "..", "..", "..",
+                    "support", projectName,
+                    "bin", configuration, tfmSegment,
+                    executableName));
+            if (!File.Exists(executablePath))
+            {
+                throw new InvalidOperationException($"{displayName} was not built: {executablePath}");
+            }
         }
 
-        string sourceRelativePath = Path.GetFullPath(
-            Path.Combine(
-                AppContext.BaseDirectory,
-                "..", "..", "..", "..",
-                "support", projectName,
-                "bin", configuration, tfmSegment,
-                executableName));
-        if (!File.Exists(sourceRelativePath))
+        // The current Codex locator treats an explicit .exe path as a direct executable.
+        // Keep portable fake-appserver integration tests usable on macOS until the production
+        // locator gains its darwin-native path handling in Phase 4. A Mach-O apphost remains
+        // executable through this test-only symlink regardless of its filename suffix.
+        if (OperatingSystem.IsMacOS() && projectName == "AiUsageMonitor.FakeAppServer")
         {
-            throw new InvalidOperationException($"{displayName} was not built: {sourceRelativePath}");
+            string aliasPath = executablePath + ".exe";
+            if (!File.Exists(aliasPath))
+            {
+                try
+                {
+                    File.CreateSymbolicLink(aliasPath, Path.GetFileName(executablePath));
+                }
+                catch (IOException) when (File.Exists(aliasPath))
+                {
+                    // Another parallel test created the same alias.
+                }
+            }
+            return aliasPath;
         }
-        return sourceRelativePath;
+
+        return executablePath;
     }
 
 #if DEBUG

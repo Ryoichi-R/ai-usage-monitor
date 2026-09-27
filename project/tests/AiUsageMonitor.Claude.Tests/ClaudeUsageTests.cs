@@ -441,7 +441,7 @@ public sealed class ClaudeUsageTests
     }
 
     private static string CreateTestPipeName() =>
-        $"{ClaudeUsagePipeServer.PipeName}-test-{Guid.NewGuid():N}";
+        $"CUM-{Guid.NewGuid():N}";
 
     private static UsageSnapshot Snapshot(double used, DateTimeOffset? reset, DateTimeOffset received) =>
         new(UsageProvider.Claude, received, received, UsageAvailability.Available, null, null,

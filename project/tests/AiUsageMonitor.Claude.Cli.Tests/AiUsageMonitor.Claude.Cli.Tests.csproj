@@ -16,6 +16,10 @@
     <ProjectReference Include="..\..\src\AiUsageMonitor.Claude.Cli\AiUsageMonitor.Claude.Cli.csproj" />
     <ProjectReference Include="..\..\src\AiUsageMonitor.Claude\AiUsageMonitor.Claude.csproj" />
     <ProjectReference Include="..\..\src\AiUsageMonitor.Core\AiUsageMonitor.Core.csproj" />
+    <ProjectReference Include="..\support\AiUsageMonitor.FakeClaudeCli\AiUsageMonitor.FakeClaudeCli.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\TestSupport\FakeExecutableLocator.cs" Link="TestSupport\FakeExecutableLocator.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\fixtures\claude-cli-screens\*.txt" LinkBase="fixtures\claude-cli-screens" CopyToOutputDirectory="PreserveNewest" />
