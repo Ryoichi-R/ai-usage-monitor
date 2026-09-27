@@ -66,3 +66,16 @@ cross-midnight resetとして受理します。週間枠や範囲外候補は翌
 ## Claude CLIのセッションリセット時刻がない場合
 
 Claude Code 2.1.274では、5時間枠が0%の画面でリセット時刻の行が省略される場合があります。修正版は、0%だけのセッション欄に続く週間枠を正常に解析できた場合、この表示を受理します。存在しないリセット時刻は推測せず、RESET — と表示します。0%以外での時刻欠落、未知の行、不正なリセット表記、週間枠の不完全な表示は引き続き取得エラーとして扱います。
+
+## macOS
+
+macOS版の仕組みは[ADR 009](../adr/009-macos-widget-layer-control.md)と[ADR 010](../adr/010-macos-claude-cli-screen-acquisition.md)を参照してください。診断ログは`~/Library/Logs/AiUsageMonitor/diagnostic.log`で、理由コードと例外の型名だけを記録します。
+
+- **初回起動で「開けません」と表示される**: 自分で作った`.app`は通常そのまま開けます。別の場所から複製した場合は、Finderで右クリック→「開く」で許可してください。notarizationは行っていません。
+- **メニューバーのアイコンが出ない**: macOS 27ではAvaloniaの既知の問題（メニューバーが消える、AvaloniaUI/Avalonia#22285）を追跡中です。メニューバーの項目が多い場合は、表示しきれずに隠れていないかも確認してください。
+- **`widget-layer-degraded`が診断ログに出る**: 常に手前・最背面・クリック透過の設定がwindowへ反映されていません。設定を切り替え直し、改善しない場合はmacOSとAvaloniaの版を記録して報告してください。
+- `CLI_VERSION_REVALIDATION_REQUIRED`: `~/.local/bin/claude`が検証済みでない版を指しています。active取得は再検証が済むまで止まり、statusLine受信は続きます。信頼確認などでCLIを手動起動する場合は、「Claude Code連携…」が提示するとおり`DISABLE_AUTOUPDATER=1`を付けてください。
+- `CLI_GROUP_ESCAPE_DETECTED`: 監視アプリが起動したCLIの子プロセスが監視範囲から外れました。該当processは終了済みで、その版のactive取得を`~/Library/Application Support/AiUsageMonitor/claude-active-quarantine`で止めています。fileは削除せず、再検証を依頼してください。
+- `PROCESS_CLEANUP_FAILED`: CLIの終了後、子プロセスの消滅を確認できませんでした。projectの`scripts/check-macos-residual-processes.py`で残留を確認してください。残っていても、次回起動時にPIDと起動時刻が一致するprocessだけを回収します。
+- `MANAGED_SETTINGS_PRESENT`: managed settings（組織の管理設定）があるため、CLIを起動しません。Windowsでも同じ理由コードになります（ADR 003追記）。
+- `SIGNATURE_VERIFICATION_FAILED`: CLIが署名要件（Anthropicの識別子とTeam ID）を満たしません。公式のnative installerで入れ直してください。

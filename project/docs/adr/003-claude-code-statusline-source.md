@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (2026-07-24、旧2026-07-23決定を置換) / Amended by ADR 005 (2026-07-27)
+Accepted (2026-07-24、旧2026-07-23決定を置換) / Amended by ADR 005 (2026-07-27) / Scope clarified by ADR 010 (2026-09-27)
 
 ADR 005は、Automaticの優先順位、単一merger所有、旧generationの遅延commitという3点だけを置換する。active CLIの起動・trust・Job Object・fail-closed・privacy・reset validationに関する本ADRの決定は引き続き有効である。
 
@@ -54,3 +54,9 @@ reset専用reasonは`USAGE_RESET_AMBIGUOUS`、`USAGE_RESET_OUT_OF_RANGE`、
 `USAGE_RESET_TIME_ZONE_UNSUPPORTED`、`USAGE_RESET_FORMAT_UNSUPPORTED`とする。
 reasonとは別に保持できる診断contextは表記category、zone category、候補との差（分）、
 window期間に限定し、生行、使用率、account、絶対日時を含めない。
+
+# 適用範囲とmanaged settingsの検査（2026-09-27追記）
+
+本ADRの隠しconsole、`ConPTY`不使用、Job Objectに関する決定はWindows実装に限る。macOSのactive取得はADR 010のPTY＋VT画面モデルと監督helperで行い、trust、隔離引数、送る入力、未知画面のfail-closed、privacyの決定は本ADRをそのまま適用する。
+
+「managed settingsはfail-closed」は、起動前の有無の検査として実装した。WindowsはfileのC:\Program Files\ClaudeCode\（`managed-settings.json`、`managed-settings.d`、`managed-mcp.json`）、HKLM／HKCUの`SOFTWARE\Policies\ClaudeCode`の値`Settings`、server-managed settingsの保存file `~/.claude/remote-settings.json`（`CLAUDE_CONFIG_DIR`があればその配下も）を見る。macOSは同じfile群を`/Library/Application Support/ClaudeCode/`で見て、加えてmanaged preferences（`com.anthropic.claudecode`）を見る。内容は読まず、存在するか確認できない場合は`MANAGED_SETTINGS_PRESENT`（Unsupported）としてCLIを起動しない。配置は公式文書（managed-settings、server-managed-settings、2026-09-27確認）に従う。
