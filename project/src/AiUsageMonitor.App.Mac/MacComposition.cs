@@ -20,7 +20,8 @@ internal static class MacComposition
         string journal = Path.Combine(paths.ApplicationSupportDirectory, "ProcessSessions");
         string bridge = Path.Combine(baseDirectory, "ai-usage-claude-statusline");
         var policy = new ClaudeLaunchPolicy(paths.UserHomeDirectory);
-        var probe = new MacClaudeCapabilityProbe(new MacManagedProcessLauncher(helper, journal, verifyClaude: true), policy, workspace);
+        var quarantine = new ClaudeActiveQuarantine(Path.Combine(paths.ApplicationSupportDirectory, "claude-active-quarantine"));
+        var probe = new MacClaudeCapabilityProbe(new MacManagedProcessLauncher(helper, journal, verifyClaude: true), policy, workspace, quarantine);
         return new WidgetHostServices
         {
             AppPaths = paths,
@@ -33,7 +34,7 @@ internal static class MacComposition
             CreateLayerController = () => new MacWidgetLayerController(),
             ClaudeSourceFactory = configuration => new ClaudeCliActiveSource(
                 configuration.ExecutablePath, bridge, configuration.StartupTimeout, workspace,
-                new MacClaudeScreenSessionFactory(new MacManagedProcessLauncher(helper, journal, usePty: true, verifyClaude: true), policy),
+                new MacClaudeScreenSessionFactory(new MacManagedProcessLauncher(helper, journal, usePty: true, verifyClaude: true), policy, quarantine, code => log.Write(code, null)),
                 new MacClaudeExecutableLocator(paths.UserHomeDirectory, helper, policy), probe.ProbeAsync),
             ClaudeWorkspace = workspace,
             ClaudeBridgePath = bridge,

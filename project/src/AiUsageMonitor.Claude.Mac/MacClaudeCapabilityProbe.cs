@@ -1,3 +1,4 @@
+using System.Runtime.Versioning;
 using System.Text;
 using System.Text.RegularExpressions;
 using AiUsageMonitor.Claude.Cli;
@@ -5,7 +6,9 @@ using AiUsageMonitor.Platform;
 
 namespace AiUsageMonitor.Claude.Mac;
 
-public sealed partial class MacClaudeCapabilityProbe(IManagedProcessLauncher launcher, ClaudeLaunchPolicy policy, IClaudeWorkspaceProvisioner workspace)
+[SupportedOSPlatform("macos")]
+public sealed partial class MacClaudeCapabilityProbe(
+    IManagedProcessLauncher launcher, ClaudeLaunchPolicy policy, IClaudeWorkspaceProvisioner workspace, ClaudeActiveQuarantine? quarantine = null)
 {
     public async Task<ClaudeCliCapabilities> ProbeAsync(string executable, TimeSpan timeout, CancellationToken cancellationToken)
     {
@@ -13,10 +16,14 @@ public sealed partial class MacClaudeCapabilityProbe(IManagedProcessLauncher lau
         deadline.CancelAfter(timeout);
         try
         {
+            // 離脱を検出したversionは、ownerが再検証するまで能力確認の起動すら行わない（D12）。
+            if (quarantine?.IsActive() == true) return new(false, null, ClaudeScreenFailureCode.DescendantEscaped.ToReasonCode());
             string folder = workspace.EnsureWorkspace();
-            string version = (await RunAsync(executable, folder, "--version", deadline.Token).ConfigureAwait(false)).Trim();
-            if (!VersionPattern().IsMatch(version)) return new(false, null, "CLI_VERSION_REVALIDATION_REQUIRED");
-            string help = await RunAsync(executable, folder, "--help", deadline.Token).ConfigureAwait(false);
+            (string version, ClaudeScreenFailureCode? versionFailure) = await RunAsync(executable, folder, "--version", deadline.Token).ConfigureAwait(false);
+            if (versionFailure is { } failure) return new(false, null, failure.ToReasonCode());
+            if (!VersionPattern().IsMatch(version.Trim())) return new(false, null, "CLI_VERSION_REVALIDATION_REQUIRED");
+            (string help, ClaudeScreenFailureCode? helpFailure) = await RunAsync(executable, folder, "--help", deadline.Token).ConfigureAwait(false);
+            if (helpFailure is { } helpError) return new(false, null, helpError.ToReasonCode());
             string[] flags = ["--setting-sources", "--settings", "--tools", "--no-chrome", "--strict-mcp-config", "--safe-mode", "--ax-screen-reader"];
             return flags.All(flag => help.Contains(flag, StringComparison.Ordinal))
                 ? new(true, ClaudeLaunchPolicy.VerifiedVersion, null) : new(false, null, "REQUIRED_FLAG_MISSING");
@@ -27,13 +34,21 @@ public sealed partial class MacClaudeCapabilityProbe(IManagedProcessLauncher lau
         { return new(false, null, "CAPABILITY_FAILED"); }
     }
 
-    private async Task<string> RunAsync(string executable, string folder, string argument, CancellationToken token)
+    private async Task<(string Output, ClaudeScreenFailureCode? Failure)> RunAsync(string executable, string folder, string argument, CancellationToken token)
     {
-        await using var session = await launcher.StartAsync(policy.CreateStartInfo(executable, folder, argument), token).ConfigureAwait(false);
-        Task<string> output = ReadAsync(session.StandardOutput, token);
-        Task<string> error = ReadAsync(session.StandardError, token);
-        await Task.WhenAll(output, error).ConfigureAwait(false);
-        return await output.ConfigureAwait(false);
+        var session = await launcher.StartAsync(policy.CreateStartInfo(executable, folder, argument), token).ConfigureAwait(false);
+        string text;
+        await using (session.ConfigureAwait(false))
+        {
+            Task<string> output = ReadAsync(session.StandardOutput, token);
+            Task<string> error = ReadAsync(session.StandardError, token);
+            await Task.WhenAll(output, error).ConfigureAwait(false);
+            text = await output.ConfigureAwait(false);
+        }
+        // 出力が正常でも、終了時の後始末で離脱・回収失敗が判明したら能力確認を不成立にする。
+        ClaudeScreenFailureCode? failure = MacClaudeScreenSession.ToFailure(session.Outcome);
+        if (failure == ClaudeScreenFailureCode.DescendantEscaped) quarantine?.Record();
+        return (text, failure);
     }
 
     private static async Task<string> ReadAsync(StreamReader reader, CancellationToken token)

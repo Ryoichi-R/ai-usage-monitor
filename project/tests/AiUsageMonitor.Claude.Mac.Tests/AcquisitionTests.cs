@@ -36,7 +36,8 @@ public sealed class AcquisitionTests
         using var temp = new Scratch(); var policy = new ClaudeLaunchPolicy(temp.Path, Path.Combine(temp.Path, "Library"));
         var info = policy.CreateStartInfo("/fake", temp.Path);
         Assert.Equal(ClaudeLaunchPolicy.IsolationArguments, info.ArgumentList);
-        Assert.Equal(7, info.Environment.Count); Assert.Equal("en_US.UTF-8", info.Environment["LANG"]);
+        Assert.Equal(8, info.Environment.Count); Assert.Equal("en_US.UTF-8", info.Environment["LANG"]);
+        Assert.Equal("1", info.Environment["DISABLE_AUTOUPDATER"]);
         Assert.DoesNotContain("ANTHROPIC_API_KEY", info.Environment.Keys);
         Assert.Equal("CLAUDE_NOT_INSTALLED", new MacClaudeExecutableLocator(temp.Path, "/missing", policy).Resolve("/missing-explicit").FailureReason);
     }
@@ -52,6 +53,61 @@ public sealed class AcquisitionTests
         var result = await probe.ProbeAsync("/fake", TimeSpan.FromSeconds(1), CancellationToken.None);
         Assert.Equal(supported, result.Supported); Assert.Equal(reason, result.FailureReason);
         Assert.Equal(launcher.Created.Count, launcher.Created.Count(x => x.Disposed));
+    }
+
+    [Theory]
+    [InlineData(ManagedProcessOutcome.DescendantEscaped, "CLI_GROUP_ESCAPE_DETECTED", true)]
+    [InlineData(ManagedProcessOutcome.SupervisionFailed, "PROCESS_CLEANUP_FAILED", false)]
+    public async Task CapabilityProbeFailsClosedOnCleanupOutcomeAndQuarantinesEscapes(ManagedProcessOutcome outcome, string reason, bool quarantined)
+    {
+        using var temp = new Scratch(); var launcher = new ProbeLauncher("2.1.274 (Claude Code)", true, outcome);
+        var quarantine = new ClaudeActiveQuarantine(Path.Combine(temp.Path, "state", "claude-active-quarantine"));
+        var probe = new MacClaudeCapabilityProbe(launcher, new ClaudeLaunchPolicy(temp.Path, temp.Path), new Workspace(temp.Path), quarantine);
+        var result = await probe.ProbeAsync("/fake", TimeSpan.FromSeconds(1), CancellationToken.None);
+        Assert.False(result.Supported); Assert.Equal(reason, result.FailureReason);
+        Assert.Equal(quarantined, quarantine.IsActive());
+        int launches = launcher.Created.Count;
+        var again = await probe.ProbeAsync("/fake", TimeSpan.FromSeconds(1), CancellationToken.None);
+        if (quarantined)
+        {
+            // 再検証まで能力確認のCLI起動すら行わない。
+            Assert.Equal(reason, again.FailureReason);
+            Assert.Equal(launches, launcher.Created.Count);
+        }
+    }
+
+    [Fact]
+    public void QuarantineIsBoundToVerifiedVersionAndFailsClosedWhenUnreadable()
+    {
+        using var temp = new Scratch();
+        var quarantine = new ClaudeActiveQuarantine(Path.Combine(temp.Path, "state", "claude-active-quarantine"));
+        Assert.False(quarantine.IsActive());
+        quarantine.Record();
+        Assert.True(quarantine.IsActive());
+        Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(quarantine.Path));
+        Assert.Equal(ClaudeLaunchPolicy.VerifiedVersion + "\n", File.ReadAllText(quarantine.Path));
+        // 別versionの記録は、検証済みversionを更新した後の取得を止めない。
+        File.WriteAllText(quarantine.Path, "2.1.0\n");
+        Assert.False(quarantine.IsActive());
+        File.Delete(quarantine.Path); Directory.CreateDirectory(quarantine.Path);
+        Assert.True(new ClaudeActiveQuarantine(quarantine.Path).IsActive());
+    }
+
+    [Theory]
+    [InlineData(ManagedProcessOutcome.DescendantEscaped, ClaudeScreenFailureCode.DescendantEscaped, true)]
+    [InlineData(ManagedProcessOutcome.SupervisionFailed, ClaudeScreenFailureCode.ProcessCleanupFailed, false)]
+    [InlineData(ManagedProcessOutcome.Clean, null, false)]
+    [InlineData(ManagedProcessOutcome.Unknown, null, false)]
+    public async Task ScreenSessionReportsCleanupOutcomeAfterDispose(ManagedProcessOutcome outcome, ClaudeScreenFailureCode? expected, bool quarantined)
+    {
+        using var temp = new Scratch();
+        var quarantine = new ClaudeActiveQuarantine(Path.Combine(temp.Path, "claude-active-quarantine"));
+        var io = new FakeSession { ReportedOutcome = outcome };
+        var screen = new MacClaudeScreenSession(io, quarantine);
+        Assert.Null(screen.CompletionFailure);
+        await screen.DisposeAsync();
+        Assert.Equal(expected, screen.CompletionFailure);
+        Assert.Equal(quarantined, quarantine.IsActive());
     }
 
     [Fact]
@@ -79,6 +135,18 @@ public sealed class AcquisitionTests
         Assert.Equal("/usage\r", io.InputText);
         io.Output.Emit("\u001b[2J");
         Assert.False((await screen.ReadScreenAsync(TimeSpan.FromSeconds(1), CancellationToken.None)).Success);
+    }
+
+    [Fact]
+    public async Task RejectedVtIsReportedOnceAsCategoryOnly()
+    {
+        var codes = new List<string>();
+        await using var io = new FakeSession(); await using var screen = new MacClaudeScreenSession(io, diagnostic: codes.Add);
+        io.Output.Emit("Is this a project you trust?\u001b[7m1. Yes");
+        await Task.Delay(50);
+        Assert.Equal(ClaudeScreenFailureCode.ScreenReadFailed, (await screen.ReadScreenAsync(TimeSpan.FromSeconds(1), CancellationToken.None)).ReasonCode);
+        Assert.Equal(ClaudeScreenFailureCode.ScreenReadFailed, (await screen.ReadScreenAsync(TimeSpan.FromSeconds(1), CancellationToken.None)).ReasonCode);
+        Assert.Equal(["claude-vt-rejected:csi:7m"], codes);
     }
 
     [Fact]
@@ -118,12 +186,12 @@ public sealed class AcquisitionTests
     }
 
     internal sealed class Workspace(string path) : IClaudeWorkspaceProvisioner { public string WorkspacePath => path; public string EnsureWorkspace() => path; }
-    private sealed class ProbeLauncher(string version, bool flags) : IManagedProcessLauncher
+    private sealed class ProbeLauncher(string version, bool flags, ManagedProcessOutcome outcome = ManagedProcessOutcome.Clean) : IManagedProcessLauncher
     {
         internal List<FakeSession> Created { get; } = [];
         public Task<IManagedProcessSession> StartAsync(ProcessStartInfo info, CancellationToken token)
         {
-            var session = new FakeSession(); Created.Add(session);
+            var session = new FakeSession { ReportedOutcome = outcome }; Created.Add(session);
             session.Output.Emit(info.ArgumentList[0] == "--version" ? version : flags ? "--settings " + string.Join(' ', ClaudeLaunchPolicy.IsolationArguments) : "none");
             session.Output.End(); return Task.FromResult<IManagedProcessSession>(session);
         }
@@ -139,6 +207,8 @@ public sealed class AcquisitionTests
         internal FeedStream Output { get; } = new();
         private readonly MemoryStream _input = new();
         internal bool Disposed { get; private set; }
+        internal ManagedProcessOutcome ReportedOutcome { get; init; } = ManagedProcessOutcome.Clean;
+        public ManagedProcessOutcome Outcome => Disposed ? ReportedOutcome : ManagedProcessOutcome.Unknown;
         internal string InputText => Encoding.UTF8.GetString(_input.ToArray());
         public StreamReader StandardOutput { get; }
         public StreamReader StandardError { get; } = new(new MemoryStream());

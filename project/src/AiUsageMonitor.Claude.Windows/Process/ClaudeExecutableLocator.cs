@@ -15,6 +15,9 @@ public sealed class ClaudeExecutableLocator : IClaudeExecutableLocator
     {
         if (!OperatingSystem.IsWindows())
             return Failure("UNSUPPORTED_PLATFORM");
+        // managed settingsは--safe-modeでも上書きできず、hook等を持ち込みうる。存在すればCLIを起動しない（ADR 003、CUM-18）。
+        if (!WindowsClaudeManagedSettings.CreateGuard().AllowsLaunch())
+            return Failure(ClaudeManagedSettingsGuard.ReasonCode);
 
         IEnumerable<string> candidates = string.IsNullOrWhiteSpace(configuredPath)
             ? DefaultCandidates()

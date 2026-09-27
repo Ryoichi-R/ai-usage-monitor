@@ -126,6 +126,7 @@ public sealed class ClaudeCliActiveSource : IClaudeUsageSource
         }
 
         IClaudeScreenSession session = started.Value;
+        ClaudeUsageObservation observation;
         await using (session.ConfigureAwait(false))
         {
             try
@@ -134,7 +135,7 @@ public sealed class ClaudeCliActiveSource : IClaudeUsageSource
                     session,
                     version,
                     cancellationToken).ConfigureAwait(false);
-                return Observation(
+                observation = Observation(
                     result,
                     result.Availability == UsageAvailability.Available
                         ? ClaudeUsageSourceKind.CliScreen
@@ -153,6 +154,22 @@ public sealed class ClaudeCliActiveSource : IClaudeUsageSource
                 { }
             }
         }
+
+        // 子孫のgroup離脱や回収失敗は終了時にだけ確定する。画面から得た値より優先し、値を返さない（D12）。
+        return session.CompletionFailure switch
+        {
+            ClaudeScreenFailureCode.DescendantEscaped => Observation(Failure(
+                DateTimeOffset.UtcNow,
+                UsageAvailability.Unsupported,
+                ClaudeScreenFailureCode.DescendantEscaped.ToReasonCode(),
+                version)),
+            { } failure => Observation(Failure(
+                DateTimeOffset.UtcNow,
+                UsageAvailability.Error,
+                failure.ToReasonCode(),
+                version)),
+            null => observation,
+        };
     }
 
     private async Task<UsageSnapshot> WaitUntilReadyAndReadUsageAsync(

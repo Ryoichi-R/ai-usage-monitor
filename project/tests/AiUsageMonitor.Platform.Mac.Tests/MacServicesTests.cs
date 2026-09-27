@@ -79,8 +79,10 @@ public sealed class MacServicesTests
             info.ArgumentList.Add("trap '' TERM HUP; printf 'ready\\n'; while :; do sleep 1; done");
             var session = await launcher.StartAsync(info, CancellationToken.None);
             Assert.Equal("ready", await session.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(3)));
+            Assert.Equal(ManagedProcessOutcome.Unknown, session.Outcome);
             await session.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(9));
             await session.DisposeAsync();
+            Assert.Equal(ManagedProcessOutcome.Clean, session.Outcome);
             await launcher.SweepAsync(CancellationToken.None);
             using var cancelled = new CancellationTokenSource();
             cancelled.Cancel();
@@ -89,6 +91,36 @@ public sealed class MacServicesTests
             await Assert.ThrowsAsync<IOException>(() => missing.StartAsync(info, CancellationToken.None));
         }
         finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task ManagedLauncherReportsDescendantThatLeavesTheSessionAndTerminatesIt()
+    {
+        string root = NewRoot();
+        try
+        {
+            var launcher = new MacManagedProcessLauncher(Path.Combine(AppContext.BaseDirectory, "ai-usage-process-supervisor"), root);
+            var info = new ProcessStartInfo("/usr/bin/perl");
+            info.ArgumentList.Add("-MPOSIX");
+            info.ArgumentList.Add("-e");
+            info.ArgumentList.Add("$| = 1; my $pid = fork(); if ($pid == 0) { POSIX::setsid(); sleep 30; exit 0 } print \"$pid\\n\"; sleep 30");
+            var session = await launcher.StartAsync(info, CancellationToken.None);
+            int escaped = int.Parse(await session.StandardOutput.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(3)) ?? "0", System.Globalization.CultureInfo.InvariantCulture);
+            await session.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(9));
+            Assert.Equal(ManagedProcessOutcome.DescendantEscaped, session.Outcome);
+            // 離脱した子孫は(pid, 起動時刻)を照合したうえで個別に終了済みである。
+            Assert.True(escaped > 1);
+            Assert.False(IsAlive(escaped));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    private static bool IsAlive(int pid)
+    {
+        using var ps = Process.Start(new ProcessStartInfo("/bin/ps", ["-p", pid.ToString(System.Globalization.CultureInfo.InvariantCulture), "-o", "stat="]) { RedirectStandardOutput = true })!;
+        string state = ps.StandardOutput.ReadToEnd().Trim();
+        ps.WaitForExit();
+        return state.Length > 0 && !state.StartsWith('Z');
     }
 
     private static string NewRoot()

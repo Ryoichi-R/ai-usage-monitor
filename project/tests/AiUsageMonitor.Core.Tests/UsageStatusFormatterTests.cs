@@ -97,6 +97,18 @@ public sealed class UsageStatusFormatterTests
         Assert.False(string.IsNullOrWhiteSpace(result));
     }
 
+    [Theory]
+    [InlineData("CLI_VERSION_REVALIDATION_REQUIRED", "能動取得を停止 — Claude Codeの版が未検証です", "再検証が済むまで再開しません")]
+    [InlineData("CLI_GROUP_ESCAPE_DETECTED", "能動取得を停止 — 子プロセスの離脱を検出しました", "troubleshooting")]
+    [InlineData("MANAGED_SETTINGS_PRESENT", "能動取得を停止 — 管理設定があります", "managed settings")]
+    [InlineData("REQUIRED_FLAG_MISSING", "このClaude Codeでは能動取得を利用できません", "このClaude Code versionでは")]
+    public void UnsupportedClaudeReasonsExplainWhyActiveAcquisitionStopped(string reason, string widget, string connectionPart)
+    {
+        UsageSnapshot snapshot = Snapshot(UsageProvider.Claude, UsageAvailability.Unsupported, reason);
+        Assert.Equal(widget, UsageStatusFormatter.Format("CLAUDE", snapshot));
+        Assert.Contains(connectionPart, UsageStatusFormatter.FormatClaudeConnection(snapshot), StringComparison.Ordinal);
+    }
+
     [Fact]
     public void UnknownStaleCodexStateUsesGenericStoppedMessage()
     {

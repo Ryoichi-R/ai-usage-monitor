@@ -46,6 +46,7 @@ public sealed class WidgetHost : IAsyncDisposable
     private WelcomeWindow? _welcomeWindow;
     private bool _repositioning;
     private bool _layerDegraded;
+    private string? _lastClaudeState;
     private int _disposed;
 
     public WidgetHost(WidgetHostServices services, Action shutdown)
@@ -238,6 +239,16 @@ public sealed class WidgetHost : IAsyncDisposable
         {
             _services.Diagnostic("widget-layer-apply-failure", exception);
         }
+    }
+
+    // 画面の表示文言だけでは原因の理由コードが分からないため、状態が変わったときだけ理由コードを診断へ残す。
+    // 記録するのはavailabilityとreasonの列挙値だけで、使用率・reset時刻・account情報を含めない。
+    private void ReportClaudeReason(UsageSnapshot snapshot)
+    {
+        string state = $"claude-status:{snapshot.Availability}:{snapshot.Reason ?? "-"}";
+        if (string.Equals(state, _lastClaudeState, StringComparison.Ordinal)) return;
+        _lastClaudeState = state;
+        _services.Diagnostic(state, null);
     }
 
     private void OnLayerHealthChanged(WidgetLayerHealth health)
@@ -552,7 +563,7 @@ public sealed class WidgetHost : IAsyncDisposable
                 _manualRefreshState.Enter(RefreshPhase.Claude, claudeRefresh);
                 try
                 {
-                    await claudeRefresh;
+                    ReportClaudeReason(await claudeRefresh);
                 }
                 catch (Exception exception) when (exception is not OperationCanceledException)
                 {

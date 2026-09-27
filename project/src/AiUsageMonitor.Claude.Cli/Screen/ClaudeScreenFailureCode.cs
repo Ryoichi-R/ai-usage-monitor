@@ -34,6 +34,10 @@ public enum ClaudeScreenFailureCode
     UnexpectedUsageScreen,
     UsageScreenParseFailed,
 
+    // process supervision（監督側が終了時に報告する後始末の結果）
+    DescendantEscaped,
+    ProcessCleanupFailed,
+
     // availability
     ClaudeNotInstalled,
     ClaudeSignedOut,
@@ -70,6 +74,8 @@ public static class ClaudeScreenFailureCodeConvert
         ClaudeScreenFailureCode.ConsoleBufferReadFailed => "CONSOLE_BUFFER_READ_FAILED",
         ClaudeScreenFailureCode.UnexpectedUsageScreen => "UNEXPECTED_USAGE_SCREEN",
         ClaudeScreenFailureCode.UsageScreenParseFailed => "USAGE_SCREEN_PARSE_FAILED",
+        ClaudeScreenFailureCode.DescendantEscaped => "CLI_GROUP_ESCAPE_DETECTED",
+        ClaudeScreenFailureCode.ProcessCleanupFailed => "PROCESS_CLEANUP_FAILED",
         ClaudeScreenFailureCode.ClaudeNotInstalled => "CLAUDE_NOT_INSTALLED",
         ClaudeScreenFailureCode.ClaudeSignedOut => "CLAUDE_SIGNED_OUT",
         ClaudeScreenFailureCode.ClaudeTrustRequired => "CLAUDE_TRUST_REQUIRED",

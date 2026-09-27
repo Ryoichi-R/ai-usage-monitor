@@ -54,6 +54,9 @@ def owner(helper, root, escape, pty=False):
     control, _ = listener.accept()
     assert control.recv(1) == b"R"
     (root / "ready").touch()
+    if escape:
+        # The supervisor terminates on its own and reports the escape after cleanup.
+        (root / "outcome").write_bytes(control.recv(1))
     while True:
         time.sleep(.2)
 
@@ -93,7 +96,9 @@ def trial(helper, mode, pty=False):
                 wait_for(lambda: not alive(helper_pid))
                 sweep(helper, root / "journal")
             elif mode == "escape":
-                pass  # supervisor must detect and terminate without owner intervention
+                # Supervisor must detect and terminate without owner intervention, then report 'E'.
+                wait_for(lambda: (root / "outcome").exists(), 8)
+                assert (root / "outcome").read_bytes() == b"E", "escape outcome not reported"
             wait_for(lambda: all(not alive(pid) for pid in pids), 8)
             wait_for(lambda: not alive(helper_pid), 3)
             sweep(helper, root / "journal")

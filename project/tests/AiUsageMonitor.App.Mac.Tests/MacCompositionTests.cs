@@ -1,7 +1,6 @@
 using System.Runtime.Versioning;
 using AiUsageMonitor.Platform;
 using AiUsageMonitor.Core.Settings;
-using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
 using AiUsageMonitor.App.UI.Hosting;
 using AiUsageMonitor.App.UI.Runtime;
@@ -26,6 +25,14 @@ public sealed class MacCompositionTests
             Assert.IsType<MacManagedProcessLauncher>(services.CodexProcessLauncher);
             Assert.Null(services.CodexLifetimeGuardFactory);
             Assert.NotNull(services.CreateClaudeListener);
+            // 生成だけでは受信口を開かない（socketはhostのStartで作る）。
+            Assert.IsType<AiUsageMonitor.Claude.Mac.ClaudeUsageSocketListener>(services.CreateClaudeListener());
+            // 自動起動は明示したhome配下のLaunchAgentsだけへ書き、解除で消す。
+            services.Startup.Apply(true);
+            string plist = Assert.Single(Directory.GetFiles(paths.LaunchAgentsDirectory, "*.plist"));
+            Assert.Contains(Environment.ProcessPath!, File.ReadAllText(plist), StringComparison.Ordinal);
+            services.Startup.Apply(false);
+            Assert.False(File.Exists(plist));
             Assert.NotNull(services.ClaudeSetupExample);
             var source = services.ClaudeSourceFactory(new ClaudeActiveSourceConfiguration(Path.Combine(root, "missing-claude"), "bridge", TimeSpan.FromSeconds(1)));
             var observation = await source.RefreshAsync(TestContext.Current.CancellationToken);
@@ -47,8 +54,7 @@ public sealed class MacCompositionTests
     public void DemoHostChangesPresentationWithoutStartingProvidersOrSavingSettings()
     {
         var layer = new FakeLayer();
-        var lifetime = new ClassicDesktopStyleApplicationLifetime();
-        using var host = new DemoWidgetHost(lifetime, layer);
+        using var host = new DemoWidgetHost(() => { }, layer);
         host.Start();
         Dispatcher.UIThread.RunJobs();
         Assert.True(host.Window!.IsVisible);

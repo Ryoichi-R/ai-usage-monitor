@@ -1,11 +1,15 @@
 using System.Diagnostics;
+using System.Runtime.Versioning;
 using System.Text;
 using AiUsageMonitor.Claude.Cli;
 using AiUsageMonitor.Platform;
 
 namespace AiUsageMonitor.Claude.Mac;
 
-public sealed class MacClaudeScreenSessionFactory(IManagedProcessLauncher launcher, ClaudeLaunchPolicy policy) : IClaudeScreenSessionFactory
+[SupportedOSPlatform("macos")]
+/// <param name="diagnostic">理由コードだけの診断（例: VTが拒否した制御の種類）。画面の文字や利用値を渡さない。</param>
+public sealed class MacClaudeScreenSessionFactory(
+    IManagedProcessLauncher launcher, ClaudeLaunchPolicy policy, ClaudeActiveQuarantine? quarantine = null, Action<string>? diagnostic = null) : IClaudeScreenSessionFactory
 {
     public async Task<ScreenSessionResult<IClaudeScreenSession>> StartAsync(string executablePath, string workspacePath, CancellationToken cancellationToken)
     {
@@ -13,7 +17,7 @@ public sealed class MacClaudeScreenSessionFactory(IManagedProcessLauncher launch
         try
         {
             var session = await launcher.StartAsync(policy.CreateStartInfo(executablePath, workspacePath), cancellationToken).ConfigureAwait(false);
-            return ScreenSessionResult<IClaudeScreenSession>.Ok(new MacClaudeScreenSession(session));
+            return ScreenSessionResult<IClaudeScreenSession>.Ok(new MacClaudeScreenSession(session, quarantine, diagnostic));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception error) when (error is IOException or InvalidOperationException or OperationCanceledException or System.ComponentModel.Win32Exception)
@@ -21,9 +25,13 @@ public sealed class MacClaudeScreenSessionFactory(IManagedProcessLauncher launch
     }
 }
 
+[SupportedOSPlatform("macos")]
 internal sealed class MacClaudeScreenSession : IClaudeScreenSession
 {
     private readonly IManagedProcessSession _session;
+    private readonly ClaudeActiveQuarantine? _quarantine;
+    private readonly Action<string>? _diagnostic;
+    private bool _rejectionReported;
     private readonly VtScreen _screen = new();
     private readonly object _sync = new();
     private readonly CancellationTokenSource _lifetime = new();
@@ -31,7 +39,17 @@ internal sealed class MacClaudeScreenSession : IClaudeScreenSession
     private long _lastOutput = Stopwatch.GetTimestamp();
     private bool _closed;
     private int _disposed;
-    internal MacClaudeScreenSession(IManagedProcessSession session) { _session = session; _reader = ReadLoopAsync(); }
+    internal MacClaudeScreenSession(IManagedProcessSession session, ClaudeActiveQuarantine? quarantine = null, Action<string>? diagnostic = null)
+    { _session = session; _quarantine = quarantine; _diagnostic = diagnostic; _reader = ReadLoopAsync(); }
+
+    public ClaudeScreenFailureCode? CompletionFailure { get; private set; }
+
+    internal static ClaudeScreenFailureCode? ToFailure(ManagedProcessOutcome outcome) => outcome switch
+    {
+        ManagedProcessOutcome.DescendantEscaped => ClaudeScreenFailureCode.DescendantEscaped,
+        ManagedProcessOutcome.SupervisionFailed => ClaudeScreenFailureCode.ProcessCleanupFailed,
+        _ => null,
+    };
 
     private async Task ReadLoopAsync()
     {
@@ -55,7 +73,15 @@ internal sealed class MacClaudeScreenSession : IClaudeScreenSession
             lock (_sync)
             {
                 if (_closed) return ScreenSessionResult<ScreenSnapshot>.Fail(ClaudeScreenFailureCode.ProcessExited);
-                if (!_screen.Valid) return ScreenSessionResult<ScreenSnapshot>.Fail(ClaudeScreenFailureCode.ScreenReadFailed);
+                if (!_screen.Valid)
+                {
+                    if (!_rejectionReported)
+                    {
+                        _rejectionReported = true;
+                        _diagnostic?.Invoke("claude-vt-rejected:" + (_screen.RejectedCategory ?? "unknown"));
+                    }
+                    return ScreenSessionResult<ScreenSnapshot>.Fail(ClaudeScreenFailureCode.ScreenReadFailed);
+                }
                 if (Stopwatch.GetElapsedTime(started) >= TimeSpan.FromMilliseconds(350) && _screen.Complete && _screen.Revision > 0 && Stopwatch.GetElapsedTime(_lastOutput) >= TimeSpan.FromMilliseconds(350))
                     return ScreenSessionResult<ScreenSnapshot>.Ok(_screen.Snapshot());
             }
@@ -96,7 +122,12 @@ internal sealed class MacClaudeScreenSession : IClaudeScreenSession
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         _lifetime.Cancel();
-        try { await _session.DisposeAsync().ConfigureAwait(false); }
+        try
+        {
+            await _session.DisposeAsync().ConfigureAwait(false);
+            CompletionFailure = ToFailure(_session.Outcome);
+            if (CompletionFailure == ClaudeScreenFailureCode.DescendantEscaped) _quarantine?.Record();
+        }
         finally { await _reader.ConfigureAwait(false); _lifetime.Dispose(); }
     }
 }

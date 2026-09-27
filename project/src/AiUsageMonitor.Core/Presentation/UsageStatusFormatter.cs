@@ -51,11 +51,33 @@ public static class UsageStatusFormatter
         _ => "更新が停止しています",
     };
 
+    // 能動取得をfail-closedで止めた理由のうち、利用者が原因と対処を知る必要があるもの。
+    // いずれもstatusLine受信は止めない。macOSの版固定・子孫離脱（D12）と管理設定（D13）。
+    private static string? FormatClaudeUnsupportedReason(string? reason) => reason switch
+    {
+        "CLI_VERSION_REVALIDATION_REQUIRED" => "能動取得を停止 — Claude Codeの版が未検証です",
+        "CLI_GROUP_ESCAPE_DETECTED" => "能動取得を停止 — 子プロセスの離脱を検出しました",
+        "MANAGED_SETTINGS_PRESENT" => "能動取得を停止 — 管理設定があります",
+        _ => null,
+    };
+
+    private static string? FormatClaudeUnsupportedConnection(string? reason) => reason switch
+    {
+        "CLI_VERSION_REVALIDATION_REQUIRED" =>
+            "Claude Codeの版が検証済みの版と異なるため、能動取得を停止しています。新しい版の再検証が済むまで再開しません。statusLine受信は引き続き使えます。",
+        "CLI_GROUP_ESCAPE_DETECTED" =>
+            "Claude Codeの子プロセスが監視範囲から外れたため、能動取得を停止しました。再検証が済むまで再開しません。statusLine受信は引き続き使えます。troubleshootingを確認してください。",
+        "MANAGED_SETTINGS_PRESENT" =>
+            "管理設定（managed settings）が存在するため、能動取得を行いません。statusLine受信は引き続き使えます。",
+        _ => null,
+    };
+
     private static string FormatClaude(UsageSnapshot snapshot) =>
         snapshot.IsStale || snapshot.Availability == UsageAvailability.Stale
             ? FormatClaudeStaleReason(snapshot.Reason)
             : snapshot.Availability switch
             {
+                UsageAvailability.Unsupported when FormatClaudeUnsupportedReason(snapshot.Reason) is { } message => message,
                 UsageAvailability.Setup => $"未接続 — {StatusIconLocation}から連携設定を開いてください",
                 UsageAvailability.Loading => "接続を確認しています",
                 UsageAvailability.Waiting => "接続済み — 利用情報を待っています",
@@ -87,6 +109,7 @@ public static class UsageStatusFormatter
                 UsageAvailability.Unavailable => "接続しましたが、利用情報を取得できません。",
                 UsageAvailability.NotInstalled => "Claude Codeが見つかりません。公式CLIをインストールしてください。",
                 UsageAvailability.SignedOut => "Claude Codeへサインインしてください。",
+                UsageAvailability.Unsupported when FormatClaudeUnsupportedConnection(snapshot.Reason) is { } message => message,
                 UsageAvailability.Unsupported => "このClaude Code versionでは能動取得を利用できません。",
                 UsageAvailability.Error => "受信データを確認できません。設定内容を見直してください。",
                 _ => "接続状態を確認できません。",

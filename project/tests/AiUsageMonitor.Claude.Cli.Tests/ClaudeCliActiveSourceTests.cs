@@ -49,6 +49,27 @@ public sealed class ClaudeCliActiveSourceTests
         Assert.Contains(session.Calls, call => call.Command == "escape");
     }
 
+    [Theory]
+    [InlineData(ClaudeScreenFailureCode.DescendantEscaped, UsageAvailability.Unsupported, "CLI_GROUP_ESCAPE_DETECTED")]
+    [InlineData(ClaudeScreenFailureCode.ProcessCleanupFailed, UsageAvailability.Error, "PROCESS_CLEANUP_FAILED")]
+    public async Task RefreshAsyncDiscardsParsedUsageWhenCleanupReportsFailure(
+        ClaudeScreenFailureCode completion, UsageAvailability availability, string reason)
+    {
+        // 監督側の後始末結果は終了時にだけ確定する。解析済みの値があっても返さない（D12）。
+        var session = new FakeClaudeScreenSession(ScreenOf(ReadyScreen), ScreenOf(UsageScreen()))
+        {
+            CompletionFailure = completion,
+        };
+        ClaudeCliActiveSource source = CreateSource(session: session);
+
+        ClaudeUsageObservation observation = await source.RefreshAsync(CancellationToken.None);
+
+        Assert.Equal(availability, observation.Availability);
+        Assert.Equal(reason, observation.Reason);
+        Assert.Empty(observation.Snapshot.Windows);
+        Assert.Contains(session.Calls, call => call.Command == "escape");
+    }
+
     [Fact]
     public async Task RefreshAsyncAcceptsZeroSessionWithoutResetAfterReady()
     {
@@ -265,6 +286,8 @@ public sealed class ClaudeCliActiveSourceTests
         }
 
         public List<(string Command, TimeSpan Timeout)> Calls { get; } = [];
+
+        public ClaudeScreenFailureCode? CompletionFailure { get; init; }
 
         public Task<ScreenSessionResult<ScreenSnapshot>> ReadScreenAsync(TimeSpan timeout, CancellationToken cancellationToken)
         {

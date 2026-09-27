@@ -119,6 +119,7 @@ public sealed class MacManagedProcessLauncher(string helperPath, string journalR
         public StreamReader StandardOutput => _helper.StandardOutput;
         public StreamReader StandardError => _helper.StandardError;
         public StreamWriter StandardInput => _helper.StandardInput;
+        public ManagedProcessOutcome Outcome { get; private set; }
 
         private async Task MonitorAsync(string helperPath, string journal)
         {
@@ -130,17 +131,45 @@ public sealed class MacManagedProcessLauncher(string helperPath, string journalR
         public async ValueTask DisposeAsync()
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-            _control.Dispose();
+            // Half-close requests termination; the helper answers with one outcome byte after cleanup.
+            try { _control.Shutdown(SocketShutdown.Send); }
+            catch (Exception error) when (error is SocketException or ObjectDisposedException) { }
+            bool killed = false;
             try
             {
                 try { await _monitor.WaitAsync(TimeSpan.FromSeconds(8)).ConfigureAwait(false); }
                 catch (TimeoutException)
                 {
+                    killed = true;
                     if (!_helper.HasExited) _helper.Kill();
                     await _monitor.WaitAsync(TimeSpan.FromSeconds(9)).ConfigureAwait(false);
                 }
+                Outcome = killed ? ManagedProcessOutcome.SupervisionFailed : await ReadOutcomeAsync().ConfigureAwait(false);
             }
-            finally { _helper.Dispose(); }
+            finally
+            {
+                _control.Dispose();
+                _helper.Dispose();
+            }
+        }
+
+        private async Task<ManagedProcessOutcome> ReadOutcomeAsync()
+        {
+            // The helper has exited, so the byte is either buffered or the peer is closed.
+            byte[] outcome = new byte[1];
+            try
+            {
+                using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+                int length = await _control.ReceiveAsync(outcome, SocketFlags.None, deadline.Token).ConfigureAwait(false);
+                return length != 1 ? ManagedProcessOutcome.SupervisionFailed : outcome[0] switch
+                {
+                    (byte)'C' => ManagedProcessOutcome.Clean,
+                    (byte)'E' => ManagedProcessOutcome.DescendantEscaped,
+                    _ => ManagedProcessOutcome.SupervisionFailed,
+                };
+            }
+            catch (Exception error) when (error is SocketException or OperationCanceledException or ObjectDisposedException)
+            { return ManagedProcessOutcome.SupervisionFailed; }
         }
     }
 }

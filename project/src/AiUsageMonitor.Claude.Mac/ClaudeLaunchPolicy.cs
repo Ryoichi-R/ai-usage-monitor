@@ -9,29 +9,13 @@ public sealed class ClaudeLaunchPolicy(string home, string systemLibrary = "/Lib
     internal static readonly string[] IsolationArguments =
         ["--setting-sources", "", "--tools", "", "--no-chrome", "--strict-mcp-config", "--safe-mode", "--ax-screen-reader"];
 
-    public bool AllowsLaunch()
-    {
-        string[] paths = [
-            Path.Combine(home, ".claude", "remote-settings.json"),
-            Path.Combine(systemLibrary, "Application Support", "ClaudeCode", "managed-settings.json"),
-            Path.Combine(systemLibrary, "Application Support", "ClaudeCode", "managed-settings.d"),
-            Path.Combine(systemLibrary, "Application Support", "ClaudeCode", "managed-mcp.json"),
-            Path.Combine(systemLibrary, "Managed Preferences", "com.anthropic.claudecode.plist"),
-            Path.Combine(systemLibrary, "Managed Preferences", Path.GetFileName(home), "com.anthropic.claudecode.plist"),
-            Path.Combine(home, "Library", "Managed Preferences", "com.anthropic.claudecode.plist")];
-        foreach (string path in paths)
-        {
-            try { _ = File.GetAttributes(path); return false; }
-            catch (FileNotFoundException) { }
-            catch (DirectoryNotFoundException) { }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { return false; }
-        }
-        return true;
-    }
+    private readonly ClaudeManagedSettingsGuard _managed = ClaudeManagedSettingsGuard.ForMacOS(home, systemLibrary);
+
+    public bool AllowsLaunch() => _managed.AllowsLaunch();
 
     internal ProcessStartInfo CreateStartInfo(string executable, string workspace, string? probeArgument = null)
     {
-        if (!AllowsLaunch()) throw new InvalidOperationException("MANAGED_SETTINGS_PRESENT");
+        if (!AllowsLaunch()) throw new InvalidOperationException(ClaudeManagedSettingsGuard.ReasonCode);
         var info = new ProcessStartInfo(executable) { WorkingDirectory = workspace, UseShellExecute = false };
         info.Environment.Clear();
         info.Environment["HOME"] = home;
@@ -41,6 +25,8 @@ public sealed class ClaudeLaunchPolicy(string home, string systemLibrary = "/Lib
         info.Environment["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin";
         info.Environment["LANG"] = "en_US.UTF-8";
         info.Environment["TERM"] = "xterm-256color";
+        // 利用者設定を読まないため、製品が起動したCLI自身が検証済みversionを自動更新しないよう公式変数で止める。
+        info.Environment["DISABLE_AUTOUPDATER"] = "1";
         if (probeArgument is not null) info.ArgumentList.Add(probeArgument);
         else foreach (string argument in IsolationArguments) info.ArgumentList.Add(argument);
         return info;
@@ -51,7 +37,7 @@ public sealed class MacClaudeExecutableLocator(string home, string helperPath, C
 {
     public ClaudeExecutableInfo Resolve(string? configuredPath)
     {
-        if (!policy.AllowsLaunch()) return new("", null, false, null, "MANAGED_SETTINGS_PRESENT");
+        if (!policy.AllowsLaunch()) return new("", null, false, null, ClaudeManagedSettingsGuard.ReasonCode);
         string[] candidates = string.IsNullOrWhiteSpace(configuredPath)
             ? [Path.Combine(home, ".local", "bin", "claude"), "/opt/homebrew/bin/claude", "/usr/local/bin/claude"]
             : [configuredPath];

@@ -254,8 +254,8 @@ public sealed class OnboardingWindowTests
     }
 
     [Theory]
-    [InlineData("/Users/a/ws", null, false, "cd '/Users/a/ws' && 'claude' --setting-sources ''")]
-    [InlineData("/Users/a/it's", "/opt/c laude", false, "cd '/Users/a/it'\\''s' && '/opt/c laude' --setting-sources ''")]
+    [InlineData("/Users/a/ws", null, false, "cd '/Users/a/ws' && DISABLE_AUTOUPDATER=1 'claude' --setting-sources ''")]
+    [InlineData("/Users/a/it's", "/opt/c laude", false, "cd '/Users/a/it'\\''s' && DISABLE_AUTOUPDATER=1 '/opt/c laude' --setting-sources ''")]
     [InlineData(@"C:\ws\it's", null, true, @"Set-Location -LiteralPath 'C:\ws\it''s'; & 'claude' --setting-sources ''")]
     public void ClaudeTrustCommandQuotesForTheTargetShell(string folder, string? executable, bool powerShell, string expectedPrefix)
     {

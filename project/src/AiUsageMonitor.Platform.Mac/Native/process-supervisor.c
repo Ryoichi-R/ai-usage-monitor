@@ -661,7 +661,13 @@ int main(int argc, char **argv)
                 !relay_read(STDIN_FILENO, &to_child) || !relay_write(master, &to_child)) { result = 74; break; }
         }
     }
-    if (tracker_terminate(&tracker, 3000, 3000, NULL) != 0) result = 74;
+    int residual = tracker_terminate(&tracker, 3000, 3000, NULL);
+    if (residual != 0) result = 74;
+    // Final outcome for the owner, sent after cleanup: 'E' a descendant left the group or
+    // session (D12, the owner must fail closed), 'F' cleanup was not proven, 'C' all reaped.
+    // The exit status cannot carry this because it relays the child's own status.
+    char outcome = tracker.escapes ? 'E' : (residual != 0 || tracker.overflow ? 'F' : 'C');
+    (void)write(control, &outcome, 1);
     if (result == 0 && tracker.root_reaped && WIFEXITED(tracker.root_status)) result = WEXITSTATUS(tracker.root_status);
     if (tracker_alive(&tracker) == 0) unlink(journal);
     if (master >= 0) close(master);

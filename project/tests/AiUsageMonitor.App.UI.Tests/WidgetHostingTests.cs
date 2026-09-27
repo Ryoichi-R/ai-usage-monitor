@@ -194,6 +194,9 @@ public sealed class WidgetHostingTests
             Assert.NotNull(host.OpenClaudeSetupWindow);
             host.ShowClaudeSetup();
             await host.RequestRefreshAsync();
+            await host.RequestRefreshAsync();
+            // 理由コードは状態が変わったときだけ、列挙値として一度記録する。
+            Assert.Single(diagnostics, code => code.StartsWith("claude-status:", StringComparison.Ordinal));
             await host.ApplyDisplayModeAsync(WidgetDisplayMode.Compact);
             await host.ApplyDisplayModeAsync(WidgetDisplayMode.Standard);
             await host.ApplySavedSettingsAsync(host.Settings with { ShowClaudeUsage = false }, true, true);

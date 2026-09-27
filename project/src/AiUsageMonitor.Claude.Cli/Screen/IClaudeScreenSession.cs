@@ -14,6 +14,12 @@ public interface IClaudeScreenSession : IAsyncDisposable
 
     /// <summary>Escapeを送出する。</summary>
     Task<ScreenSessionResult> SendEscapeAsync(TimeSpan timeout, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// 終了時の後始末で判明した失敗（子孫のgroup離脱等）。DisposeAsync完了後に確定し、
+    /// 画面から得た値より優先してfail-closedにする。報告を持たない実装はnull。
+    /// </summary>
+    ClaudeScreenFailureCode? CompletionFailure => null;
 }
 
 /// <summary>

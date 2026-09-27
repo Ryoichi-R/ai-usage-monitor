@@ -9,7 +9,6 @@ using AiUsageMonitor.Platform;
 using AiUsageMonitor.Platform.Mac;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
@@ -27,7 +26,7 @@ internal sealed class DemoWidgetHost : IDisposable
     private const string ClaudeSetupExampleText =
         "デモ表示ではClaude Codeとの接続や設定保存を行いません。通常起動で連携設定を確認してください。";
 
-    private readonly IClassicDesktopStyleApplicationLifetime _lifetime;
+    private readonly Action _shutdown;
     private readonly UsageViewModel _viewModel = DemoUsageData.Create();
     private readonly IWidgetLayerController _layer;
     private AppSettings _settings = new AppSettings { ShowClaudeUsage = true }.Normalized();
@@ -38,13 +37,15 @@ internal sealed class DemoWidgetHost : IDisposable
     private NativeMenuItem? _bottomItem;
     private NativeMenuItem? _clickThroughItem;
 
-    public DemoWidgetHost(IClassicDesktopStyleApplicationLifetime lifetime, IWidgetLayerController? layer = null)
+    public DemoWidgetHost(Action shutdown, IWidgetLayerController? layer = null)
     {
-        _lifetime = lifetime;
+        _shutdown = shutdown;
         _layer = layer ?? new MacWidgetLayerController();
     }
 
     internal MainWindow? Window => _main;
+
+    internal NativeMenu? TrayMenu => _tray?.Menu;
 
     public void Start()
     {
@@ -150,7 +151,7 @@ internal sealed class DemoWidgetHost : IDisposable
         menu.Items.Add(Item("ようこそ画面…", () => new WelcomeWindow().Show()));
         menu.Items.Add(Item("Claude Code連携…", OpenClaudeSetup));
         menu.Items.Add(new NativeMenuItemSeparator());
-        menu.Items.Add(Item("終了", () => _lifetime.Shutdown()));
+        menu.Items.Add(Item("終了", _shutdown));
         UpdateMenuChecks();
 
         var tray = new TrayIcon
