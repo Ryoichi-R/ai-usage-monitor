@@ -1,6 +1,6 @@
 # Windows 11 検証記録（2026-09-27）
 
-- 対象source: `C:\coding\ai-usage-monitor`、検証時のHEAD `f62a65e150f6ee692ce4709e6a924c579326f0ca`。テストと計測script、Appのテスト用依存注入には未コミット差分がある。commit hashだけでは最終状態を再現できない。変更パスは本記録末尾に列挙する。
+- 対象source: `C:\coding\ai-usage-monitor`、検証時のHEAD `f62a65e150f6ee692ce4709e6a924c579326f0ca`。検証時点では、テストと計測script、Appのテスト用依存注入に未コミットの差分があった。これらは同日`c32c404`（`test(windows): complete P1-W acceptance and launcher validation`）ですべてcommitされたため、最終状態は`c32c404`で再現できる（2026-09-27追記）。変更パスは本記録末尾に列挙する。
 - Mac側のP0-3/P0-4記録、`7009a67`の週reset `at`形式対応、`c834802`のmacOS fixtureが履歴に存在することを確認した。作業開始時に両repoの追跡済み変更はなかった。リモートとの同期状態はfetchをしていないため証明していない。
 - `dotnet test AiUsageMonitor.slnx -c Release --nologo`: 671/671 PASS。`Claude.Cli.Tests` 104/104にはMonthDayAt形式とmacOS fixtureを含む。
 - `pwsh -NoProfile -File scripts/test-ai-usage-monitor.ps1`: build/launcher contract PASS、coverageなし全700/700 PASS（2026-09-27、最終変更後）。Claude.Cli.Tests 111/111にはMonthDayAt形式とmacOS fixtureを含む。
@@ -19,9 +19,9 @@ Anthropicの[managed settings公式文書](https://code.claude.com/docs/en/manag
 
 内容を読まずmetadataだけ確認した結果、上記system file、`managed-settings.d`、`managed-mcp.json`、`%USERPROFILE%\.claude\remote-settings.json`、HKLM key、所有者SIDに相当するHKU keyはすべて不在だった。現在のsandboxユーザーのHKCU keyも不在。実際のpolicy適用状況はCLIの`/status`などでの確認が別途必要で、今回の制約により実CLIを直接起動していない。提案: Windows側もMacのP0-5b/D12/D13と整合する起動前metadata検査を設計し、存在時はUnsupportedとする。実装判断はMac側の方針と合わせる。
 
-## 今回の未コミット変更
+## 今回の変更（`c32c404`でcommit済み）
 
 - 計測・起動テストと導入の構成: `project/AiUsageMonitor.slnx`、`project/scripts/test-ai-usage-monitor.ps1`、`project/tests/AiUsageMonitor.App.Startup.Tests/`、`project/rebuild-ai-usage-monitor-x64.bat`、`project/rebuild-ai-usage-monitor-arm64.bat`。
 - テスト可能性のためのApp実装: `project/src/AiUsageMonitor.App/AiUsageMonitor.App.csproj`、`App.xaml.cs`、`ClaudeSetupWindow.xaml.cs`、`TrayController.cs`。通常起動時の既定動作は同じ依存を生成する。
 - 追加テスト: `project/tests/AiUsageMonitor.App.Tests/BackgroundLayerCoordinatorTests.cs`、`MainWindowDisplayTests.cs`、`MainWindowRepositionTests.cs`、`OnboardingTests.cs`、`SettingsWindowTests.cs`、`TrayControllerTests.cs`、`project/tests/AiUsageMonitor.Claude.Cli.Tests/ClaudeCliCapabilityProbeTests.cs`、`ClaudeCliUsageScreenParserTests.cs`。
-- 計測scriptと起動テストのSHA-256: `test-ai-usage-monitor.ps1` `BC812C70D0B13728FD538CD8344F643AF7E93ADAC703779320792095519D72DA`、`AppStartupTests.cs` `670250ED7F70AC56F5E52C7B6BC886BA0FAA251AA4F74BDA05A02C56453479DC`。ほかの変更ファイルの完全な列挙はGit working treeを参照する。
+- 計測scriptと起動テストのSHA-256: `test-ai-usage-monitor.ps1` `BC812C70D0B13728FD538CD8344F643AF7E93ADAC703779320792095519D72DA`、`AppStartupTests.cs` `670250ED7F70AC56F5E52C7B6BC886BA0FAA251AA4F74BDA05A02C56453479DC`。ほかの変更ファイルの完全な列挙は`git show --stat c32c404`を参照する。
