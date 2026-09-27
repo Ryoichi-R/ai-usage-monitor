@@ -226,6 +226,79 @@ public sealed class ClaudeCliUsageScreenParserTests
     }
 
     [Fact]
+    public void ParsesAnonymizedMacOsScreenReaderUsageFixture()
+    {
+        // Captured from Claude CLI 2.1.274 on macOS with --ax-screen-reader; every digit is
+        // replaced with 1, so the reset lines are "11:11pm" and "Aug 1 at 1:11pm".
+        string[] lines = File.ReadAllLines(Path.Combine(
+            AppContext.BaseDirectory, "fixtures", "claude-cli-screens", "macos", "usage-screen-macos.parse.txt"));
+
+        UsageSnapshot result = ClaudeCliUsageScreenParser.Parse(
+            lines, TokyoAt(2026, 7, 30, 19, 0), "2.1.274", Tokyo);
+
+        Assert.Equal(UsageAvailability.Available, result.Availability);
+        Assert.Equal([11d, 11d], result.Windows.Select(window => window.UsedPercent));
+        Assert.Equal(
+            [TokyoAt(2026, 7, 30, 23, 11), TokyoAt(2026, 8, 1, 13, 11)],
+            result.Windows.Select(window => window.ResetsAt.GetValueOrDefault()));
+    }
+
+    [Theory]
+    [InlineData("Resets Aug 1 at 1:11pm (Asia/Tokyo)", 13, 11)]
+    [InlineData("Resets Aug 1 at 1pm (Asia/Tokyo)", 13, 0)]
+    [InlineData("Resets AUG 1 AT 1PM (Asia/Tokyo)", 13, 0)]
+    public void MonthDayAtFormMatchesCommaForm(string reset, int hour, int minute)
+    {
+        UsageSnapshot result = ParseWithWeekReset(reset, TokyoAt(2026, 7, 30, 19, 0));
+
+        Assert.Equal(UsageAvailability.Available, result.Availability);
+        Assert.Equal(
+            TokyoAt(2026, 8, 1, hour, minute),
+            result.Windows.Single(
+                window => window.WindowDurationMins ==
+                    UsageWindowPolicy.SevenDayDurationMinutes).ResetsAt);
+    }
+
+    [Fact]
+    public void MonthDayAtFormKeepsHorizonAndYearBoundaryRules()
+    {
+        DateTimeOffset observedAt = TokyoAt(2026, 7, 26, 14, 0);
+        Assert.Equal(
+            UsageAvailability.Available,
+            ParseWithWeekReset("Resets Aug 2 at 2:02pm (Asia/Tokyo)", observedAt).Availability);
+        UsageSnapshot beyond = ParseWithWeekReset("Resets Aug 2 at 2:03pm (Asia/Tokyo)", observedAt);
+        Assert.Equal("USAGE_RESET_OUT_OF_RANGE", beyond.Reason);
+        Assert.Equal("english_month_day_at", beyond.ResetDiagnostic?.Category);
+
+        Assert.Equal(
+            "USAGE_RESET_OUT_OF_RANGE",
+            ParseWithWeekReset("Resets Jul 25 at 1pm (Asia/Tokyo)", TokyoAt(2026, 7, 26, 14, 40)).Reason);
+
+        UsageSnapshot yearBoundary = ParseWithWeekReset(
+            "Resets Jan 2 at 1am (Asia/Tokyo)",
+            TokyoAt(2026, 12, 31, 23, 0));
+        Assert.Equal(UsageAvailability.Available, yearBoundary.Availability);
+        Assert.Equal(
+            TokyoAt(2027, 1, 2, 1, 0),
+            yearBoundary.Windows.Single(
+                window => window.WindowDurationMins ==
+                    UsageWindowPolicy.SevenDayDurationMinutes).ResetsAt);
+    }
+
+    [Theory]
+    [InlineData("Resets Aug 1 at 13:11 (Asia/Tokyo)", "english_time_only")]
+    [InlineData("Resets Aug 1 at (Asia/Tokyo)", "english_time_only")]
+    [InlineData("Resets Sun 1 at 1pm (Asia/Tokyo)", "english_month_day_at")]
+    [InlineData("Resets Aug 1 at 1pm extra (Asia/Tokyo)", "english_time_only")]
+    public void MalformedMonthDayAtFormsFailClosed(string reset, string category)
+    {
+        UsageSnapshot result = ParseWithWeekReset(reset, TokyoAt(2026, 7, 30, 19, 0));
+
+        Assert.Equal("USAGE_RESET_FORMAT_UNSUPPORTED", result.Reason);
+        Assert.Equal(category, result.ResetDiagnostic?.Category);
+    }
+
+    [Fact]
     public void JapaneseAbsoluteUsesSameYearBoundaryAndHorizonRules()
     {
         UsageSnapshot past = ParseWithWeekReset(

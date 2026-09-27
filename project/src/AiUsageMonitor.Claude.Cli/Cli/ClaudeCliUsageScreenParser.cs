@@ -370,6 +370,12 @@ public static partial class ClaudeCliUsageScreenParser
             _ => localTimeZone,
         };
         DateTime localNow = TimeZoneInfo.ConvertTime(observedAt, zone).DateTime;
+        // CLI 2.1.274 prints "Aug 1 at 1:11pm"; normalize only this exact month-day form
+        // to the comma form so it shares the same parsing, year-roll and horizon rules.
+        Match monthDayAt = EnglishMonthDayAtRegex().Match(remainder);
+        if (monthDayAt.Success)
+            remainder = $"{monthDayAt.Groups["date"].Value}, {monthDayAt.Groups["time"].Value}";
+        string dateCategory = monthDayAt.Success ? "english_month_day_at" : "english_month_day";
         bool hasDate = remainder.Contains(',', StringComparison.Ordinal);
         string parseValue = hasDate ? $"{localNow.Year} {remainder}" : remainder;
         string[] formats = hasDate
@@ -384,7 +390,7 @@ public static partial class ClaudeCliUsageScreenParser
         {
             return DiagnosticFailure(
                 "USAGE_RESET_FORMAT_UNSUPPORTED",
-                hasDate ? "english_month_day" : "english_time_only",
+                hasDate ? dateCategory : "english_time_only",
                 zoneCategory,
                 expectedDurationMinutes);
         }
@@ -436,7 +442,7 @@ public static partial class ClaudeCliUsageScreenParser
             {
                 return DiagnosticFailure(
                     "USAGE_RESET_OUT_OF_RANGE",
-                    "english_month_day",
+                    dateCategory,
                     zoneCategory,
                     expectedDurationMinutes);
             }
@@ -446,7 +452,7 @@ public static partial class ClaudeCliUsageScreenParser
             reset,
             observedAt,
             expectedDurationMinutes,
-            hasDate ? "english_month_day" : "english_time_only",
+            hasDate ? dateCategory : "english_time_only",
             zoneCategory);
     }
 
@@ -558,4 +564,9 @@ public static partial class ClaudeCliUsageScreenParser
 
     [GeneratedRegex(@"^\d{1,2}:\d{2}$", RegexOptions.CultureInvariant)]
     private static partial Regex EnglishTwentyFourHourRegex();
+
+    [GeneratedRegex(
+        @"^(?<date>[A-Za-z]{3} \d{1,2}) at (?<time>\d{1,2}(?::\d{2})?(?:am|pm))$",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex EnglishMonthDayAtRegex();
 }
