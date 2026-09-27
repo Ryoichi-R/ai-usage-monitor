@@ -1337,6 +1337,7 @@ static int observe_main(int argc, char **argv)
     return WIFEXITED(status) ? WEXITSTATUS(status) : 5;
 }
 
+#ifndef DESCENDANT_TRACKER_NO_MAIN
 int main(int argc, char **argv)
 {
     uint32_t size = sizeof(self_path);
@@ -1350,3 +1351,4 @@ int main(int argc, char **argv)
     fprintf(stderr, "usage: %s [--selftest] | --observe ...\n", argv[0]);
     return 64;
 }
+#endif
