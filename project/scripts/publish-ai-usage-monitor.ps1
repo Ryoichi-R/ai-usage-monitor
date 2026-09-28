@@ -30,21 +30,9 @@ function Assert-PathWithinRoot {
 
 $projectRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot)).TrimEnd([IO.Path]::DirectorySeparatorChar)
 $project = Assert-PathWithinRoot -Path (Join-Path $projectRoot $(if ($UseLegacyWpf) { 'src/AiUsageMonitor.App.WpfLegacy/AiUsageMonitor.App.WpfLegacy.csproj' } else { 'src/AiUsageMonitor.App.Windows/AiUsageMonitor.App.Windows.csproj' })) -Root $projectRoot
-$distributionDocuments = @(
-    [pscustomobject]@{
-        Name = 'LICENSE'
-        Source = Assert-PathWithinRoot -Path (Join-Path $projectRoot 'LICENSE') -Root $projectRoot
-    }
-    [pscustomobject]@{
-        Name = 'THIRD-PARTY-NOTICES.md'
-        Source = Assert-PathWithinRoot -Path (Join-Path $projectRoot 'THIRD-PARTY-NOTICES.md') -Root $projectRoot
-    }
-)
-foreach ($document in $distributionDocuments) {
-    if (-not (Test-Path -LiteralPath $document.Source -PathType Leaf)) {
-        throw "Distribution document missing: $($document.Source)"
-    }
-}
+# Resolve every shipped document before publishing so a missing license text fails fast.
+. (Assert-PathWithinRoot -Path (Join-Path $projectRoot 'scripts/copy-ai-usage-monitor-distribution-documents.ps1') -Root $projectRoot)
+$null = Get-AiUsageMonitorDistributionDocuments -ProjectRoot $projectRoot
 $defaultManagedRoot = Assert-PathWithinRoot -Path (Join-Path $projectRoot 'artifacts') -Root $projectRoot
 $resolvedManagedRoot = if ([string]::IsNullOrWhiteSpace($ManagedRoot)) {
     $defaultManagedRoot
@@ -136,14 +124,6 @@ if (-not (Test-Path -LiteralPath $bridge -PathType Leaf)) {
     throw "Bridge missing from publish output: $bridge"
 }
 
-foreach ($document in $distributionDocuments) {
-    $destination = Assert-PathWithinRoot -Path (Join-Path $output $document.Name) -Root $output
-    Copy-Item -LiteralPath $document.Source -Destination $destination -Force
-    $sourceHash = (Get-FileHash -LiteralPath $document.Source -Algorithm SHA256).Hash
-    $destinationHash = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash
-    if ($sourceHash -ne $destinationHash) {
-        throw "Distribution document copy verification failed: $($document.Name)"
-    }
-}
+Copy-AiUsageMonitorDistributionDocuments -ProjectRoot $projectRoot -OutputDir $output
 
 Write-Host "Published AI Usage Monitor to $output" -ForegroundColor Green

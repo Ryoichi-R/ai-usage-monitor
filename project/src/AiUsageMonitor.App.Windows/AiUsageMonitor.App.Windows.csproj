@@ -19,4 +19,11 @@
     <Content Include="../../README.md" Link="README.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
   </ItemGroup>
   <ItemGroup><InternalsVisibleTo Include="AiUsageMonitor.App.Windows.Tests" /></ItemGroup>
+  <!-- SkiaSharp / HarfBuzzSharp packages carry native .pdb files next to their native libraries.
+       DebugType=None only drops managed symbols, so keep every .pdb out of the distribution. -->
+  <Target Name="ExcludeSymbolsFromPublish" AfterTargets="ComputeResolvedFilesToPublishList">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Extension)' == '.pdb'" />
+    </ItemGroup>
+  </Target>
 </Project>

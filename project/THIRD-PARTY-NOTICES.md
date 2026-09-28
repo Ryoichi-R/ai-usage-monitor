@@ -4,7 +4,7 @@
 
 ## 同梱する第三者コンポーネント
 
-Avalonia版（Windowsの`App.Windows`、macOSの`AI Usage Monitor.app`）は次のコンポーネントを同梱します。第一者コードのMIT Licenseとは別に、各コンポーネントのライセンスが適用されます。ライセンス原文は[licenses/](licenses/)にあり、macOSの`.app`では`Contents/Resources/licenses/`に同梱します。版と著作権表示は2026-09-27にNuGetパッケージのmetadataと上流repositoryの該当commitで確認しました。
+Avalonia版（Windowsの`App.Windows`、macOSの`AI Usage Monitor.app`）は次のコンポーネントを同梱します。第一者コードのMIT Licenseとは別に、各コンポーネントのライセンスが適用されます。ライセンス原文は[licenses/](licenses/)にあり、Windowsの配布フォルダーでは`licenses\`、macOSの`.app`では`Contents/Resources/licenses/`に同梱します。版と著作権表示は2026-09-27にNuGetパッケージのmetadataと上流repositoryの該当commitで確認しました。
 
 | コンポーネント | 版 | ライセンス | 著作権表示 | 原文 |
 | --- | --- | --- | --- | --- |

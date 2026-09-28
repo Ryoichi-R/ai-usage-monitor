@@ -264,6 +264,8 @@ function Get-PeMachine {
 $projectRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot)).TrimEnd([IO.Path]::DirectorySeparatorChar)
 $buildPathsScript = Assert-PathWithinRoot -Path (Join-Path $PSScriptRoot 'resolve-ai-usage-monitor-build-paths.ps1') -Root $projectRoot
 . $buildPathsScript
+$distributionDocumentsScript = Assert-PathWithinRoot -Path (Join-Path $PSScriptRoot 'copy-ai-usage-monitor-distribution-documents.ps1') -Root $projectRoot
+. $distributionDocumentsScript
 
 if ($SelectOutputRoot -and [string]::IsNullOrWhiteSpace($OutputRoot)) {
     $OutputRoot = Select-OutputRootFolder -InitialDirectory $projectRoot
@@ -399,6 +401,13 @@ try {
     $stagedBridge = Assert-PathWithinRoot -Path (Join-Path $stagingDir 'claude-statusline-bridge.ps1') -Root $stagingDir
     if (-not (Test-Path -LiteralPath $stagedBridge -PathType Leaf)) {
         throw "Published Claude bridge was not found: $stagedBridge"
+    }
+    # The publish step copied the license texts; re-verify the staged set against the source
+    # before it replaces the current build.
+    Assert-AiUsageMonitorDistributionDocuments -ProjectRoot $projectRoot -OutputDir $stagingDir
+    $stagedSymbols = @(Get-ChildItem -LiteralPath $stagingDir -Filter '*.pdb' -File -Recurse -Force)
+    if ($stagedSymbols.Count -gt 0) {
+        throw "Debug symbols must not ship with the build: $(($stagedSymbols | ForEach-Object Name) -join ', ')"
     }
     $expectedMachine = if ($Runtime -eq 'win-arm64') { 0xAA64 } else { 0x8664 }
     $actualMachine = Get-PeMachine -Path $stagedExe

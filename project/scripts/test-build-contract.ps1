@@ -9,6 +9,7 @@ $ErrorActionPreference = 'Stop'
 $projectRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot)).TrimEnd([IO.Path]::DirectorySeparatorChar)
 $resolver = Join-Path $PSScriptRoot 'resolve-ai-usage-monitor-build-paths.ps1'
 . $resolver
+. (Join-Path $PSScriptRoot 'copy-ai-usage-monitor-distribution-documents.ps1')
 
 $failures = [Collections.Generic.List[string]]::new()
 
@@ -181,6 +182,65 @@ try {
     }
     [xml]$windowsHost = Get-Content -LiteralPath (Join-Path $projectRoot 'src/AiUsageMonitor.App.Windows/AiUsageMonitor.App.Windows.csproj') -Raw
     Assert-Contract ($windowsHost.Project.PropertyGroup.AssemblyName -ceq 'AiUsageMonitor.App') 'The public executable identity must remain unchanged.'
+
+    # Windows publish/rebuild must ship LICENSE, THIRD-PARTY-NOTICES.md and every third-party
+    # license text under licenses\ byte for byte, like the macOS bundle.
+    Assert-Contract ($publish.Contains('Copy-AiUsageMonitorDistributionDocuments -ProjectRoot $projectRoot -OutputDir $output', [StringComparison]::Ordinal)) 'Publish must copy and verify the distribution documents.'
+    Assert-Contract ($rebuild.Contains('Assert-AiUsageMonitorDistributionDocuments -ProjectRoot $projectRoot -OutputDir $stagingDir', [StringComparison]::Ordinal)) 'Rebuild must verify the staged distribution documents before promotion.'
+    # Native symbol files from SkiaSharp / HarfBuzzSharp (about 105 MB) must not ship.
+    $symbolTarget = @($windowsHost.Project.Target | Where-Object { $_.Name -ceq 'ExcludeSymbolsFromPublish' })
+    Assert-Contract (
+        $symbolTarget.Count -eq 1 -and
+        $symbolTarget[0].AfterTargets -ceq 'ComputeResolvedFilesToPublishList' -and
+        $symbolTarget[0].ItemGroup.ResolvedFileToPublish.Condition -ceq "'%(Extension)' == '.pdb'"
+    ) 'The Windows host must remove every .pdb from the publish list.'
+    Assert-Contract ($rebuild.Contains("Get-ChildItem -LiteralPath `$stagingDir -Filter '*.pdb'", [StringComparison]::Ordinal)) 'Rebuild must reject staged debug symbols.'
+    $shippedDocuments = @(Get-AiUsageMonitorDistributionDocuments -ProjectRoot $projectRoot)
+    $shippedLicenses = @($shippedDocuments | Where-Object { $_.RelativePath.StartsWith('licenses' + [IO.Path]::DirectorySeparatorChar, [StringComparison]::Ordinal) } |
+        ForEach-Object { Split-Path -Leaf $_.RelativePath })
+    $noticeLicenses = @([regex]::Matches(
+            (Get-Content -LiteralPath (Join-Path $projectRoot 'THIRD-PARTY-NOTICES.md') -Raw),
+            '\]\(licenses/([^)/]+)\)') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
+    Assert-Contract ($noticeLicenses.Count -gt 0) 'THIRD-PARTY-NOTICES.md must link the shipped license texts.'
+    Assert-Contract (@(Compare-Object -ReferenceObject $noticeLicenses -DifferenceObject $shippedLicenses -CaseSensitive).Count -eq 0) (
+        "Shipped license texts must match the THIRD-PARTY-NOTICES.md links. Notices: $($noticeLicenses -join ', '); shipped: $($shippedLicenses -join ', ')"
+    )
+    Assert-Contract (@($shippedDocuments.RelativePath) -ccontains 'LICENSE') 'The first-party LICENSE must ship.'
+    Assert-Contract (@($shippedDocuments.RelativePath) -ccontains 'THIRD-PARTY-NOTICES.md') 'THIRD-PARTY-NOTICES.md must ship.'
+
+    $documentProject = Join-Path $testRoot 'document-project'
+    $documentOutput = Join-Path $testRoot 'document-output'
+    New-Item -ItemType Directory -Path (Join-Path $documentProject 'licenses') -Force | Out-Null
+    [IO.File]::WriteAllText((Join-Path $documentProject 'LICENSE'), "first-party`n")
+    [IO.File]::WriteAllText((Join-Path $documentProject 'THIRD-PARTY-NOTICES.md'), "notices`n")
+    # CRLF and a trailing space must survive: the texts ship exactly as obtained upstream.
+    [IO.File]::WriteAllBytes((Join-Path $documentProject 'licenses\Alpha-LICENSE.txt'), [Text.Encoding]::UTF8.GetBytes("alpha `r`nline`r`n"))
+    [IO.File]::WriteAllText((Join-Path $documentProject 'licenses\Beta-COPYING.md'), "beta`n")
+    [IO.File]::WriteAllText((Join-Path $documentProject 'licenses\.gitattributes'), "* -text`n")
+    Copy-AiUsageMonitorDistributionDocuments -ProjectRoot $documentProject -OutputDir $documentOutput
+    foreach ($name in 'LICENSE', 'THIRD-PARTY-NOTICES.md', 'licenses\Alpha-LICENSE.txt', 'licenses\Beta-COPYING.md') {
+        $copied = Join-Path $documentOutput $name
+        Assert-Contract (
+            (Test-Path -LiteralPath $copied -PathType Leaf) -and
+            (Get-FileHash -LiteralPath $copied -Algorithm SHA256).Hash -eq (Get-FileHash -LiteralPath (Join-Path $documentProject $name) -Algorithm SHA256).Hash
+        ) "Distribution document must be copied byte for byte: $name"
+    }
+    Assert-Contract (-not (Test-Path -LiteralPath (Join-Path $documentOutput 'licenses\.gitattributes'))) 'The repository .gitattributes must not ship with the license texts.'
+    # Re-publishing into the same directory is idempotent.
+    Copy-AiUsageMonitorDistributionDocuments -ProjectRoot $documentProject -OutputDir $documentOutput
+
+    [IO.File]::WriteAllText((Join-Path $documentOutput 'licenses\Alpha-LICENSE.txt'), "tampered`n")
+    Assert-Throws { Assert-AiUsageMonitorDistributionDocuments -ProjectRoot $documentProject -OutputDir $documentOutput } 'A modified license text must fail verification.'
+    Copy-AiUsageMonitorDistributionDocuments -ProjectRoot $documentProject -OutputDir $documentOutput
+    [IO.File]::WriteAllText((Join-Path $documentOutput 'licenses\Stale-LICENSE.txt'), "stale`n")
+    Assert-Throws { Assert-AiUsageMonitorDistributionDocuments -ProjectRoot $documentProject -OutputDir $documentOutput } 'A license text absent from the source must fail verification.'
+    Remove-Item -LiteralPath (Join-Path $documentOutput 'licenses\Stale-LICENSE.txt')
+    Remove-Item -LiteralPath (Join-Path $documentOutput 'licenses\Beta-COPYING.md')
+    Assert-Throws { Assert-AiUsageMonitorDistributionDocuments -ProjectRoot $documentProject -OutputDir $documentOutput } 'A missing license text must fail verification.'
+    Remove-Item -LiteralPath (Join-Path $documentProject 'licenses\Alpha-LICENSE.txt'), (Join-Path $documentProject 'licenses\Beta-COPYING.md')
+    Assert-Throws { Get-AiUsageMonitorDistributionDocuments -ProjectRoot $documentProject } 'An empty license texts directory must be rejected.'
+    New-Item -ItemType Directory -Path (Join-Path $documentProject 'licenses\nested') -Force | Out-Null
+    Assert-Throws { Get-AiUsageMonitorDistributionDocuments -ProjectRoot $documentProject } 'Nested license directories must be rejected instead of skipped.'
 
     $appSourceRoot = Join-Path $projectRoot 'src\AiUsageMonitor.App.WpfLegacy'
     $coordinatorConstructions = @(
