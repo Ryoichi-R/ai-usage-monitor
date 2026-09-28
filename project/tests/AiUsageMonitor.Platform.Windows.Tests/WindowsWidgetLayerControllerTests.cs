@@ -4,6 +4,40 @@ namespace AiUsageMonitor.Platform.Windows.Tests;
 
 public sealed class WindowsWidgetLayerControllerTests
 {
+    [Theory]
+    [InlineData(WidgetLayerMode.Normal)]
+    [InlineData(WidgetLayerMode.AlwaysOnBottom)]
+    public void NonTopmostFailureAndRecoveryPropagateHealth(WidgetLayerMode mode)
+    {
+        using var controller = CreateController(out _, out FakeWindowLayerApi api);
+        var received = new List<WidgetLayerHealth>();
+        controller.HealthChanged += received.Add;
+        controller.Attach(new nint(10));
+        api.Result = new(false, 5);
+        controller.SetLayerMode(mode);
+        Assert.True(controller.Health.IsDegraded);
+        Assert.Equal(5, controller.Health.ErrorCode);
+        Assert.False(controller.TryRecoverLayer());
+        api.Result = new(true, 0);
+        Assert.True(controller.TryRecoverLayer());
+        Assert.False(controller.Health.IsDegraded);
+        Assert.Equal(2, received.Count);
+        Assert.True(received[0].IsDegraded);
+        Assert.False(received[1].IsDegraded);
+    }
+
+    [Fact]
+    public void SwitchingFromFailedBottomLayerToTopmostClearsHealth()
+    {
+        using var controller = CreateController(out _, out FakeWindowLayerApi api);
+        controller.Attach(new nint(10));
+        api.Result = new(false, 5);
+        controller.SetLayerMode(WidgetLayerMode.AlwaysOnBottom);
+        Assert.True(controller.Health.IsDegraded);
+        controller.SetLayerMode(WidgetLayerMode.AlwaysOnTop);
+        Assert.False(controller.Health.IsDegraded);
+    }
+
     [Fact]
     public void SetLayerModeBeforeAttachThrows()
     {
@@ -22,7 +56,7 @@ public sealed class WindowsWidgetLayerControllerTests
     }
 
     [Fact]
-    public void AlwaysOnTopEnablesTopmostAndDoesNotTouchBottomMost()
+    public void AlwaysOnTopImmediatelyAppliesTopmostWithoutActivation()
     {
         using var controller = CreateController(out FakeTopmostInterop topmost, out FakeWindowLayerApi bottomMostApi);
         controller.Attach(new nint(10));
@@ -30,6 +64,10 @@ public sealed class WindowsWidgetLayerControllerTests
         controller.SetLayerMode(WidgetLayerMode.AlwaysOnTop);
 
         Assert.Equal(3, topmost.Hooks.Count);
+        Assert.Equal(1, topmost.SetCalls);
+        Assert.Equal(new nint(10), topmost.LastWindowPosition.WindowHandle);
+        Assert.Equal(new nint(-1), topmost.LastWindowPosition.InsertAfter);
+        Assert.Equal(0x0013u, topmost.LastWindowPosition.Flags);
         Assert.Equal(0, bottomMostApi.SetCalls);
     }
 
@@ -84,14 +122,13 @@ public sealed class WindowsWidgetLayerControllerTests
     }
 
     [Fact]
-    public void SetClickThroughRequiresAttachAndOtherwiseCompletesWithoutThrowing()
+    public void SetClickThroughRequiresAttachAndReportsInvalidNativeHandle()
     {
         using var controller = CreateController(out _, out _);
         Assert.Throws<InvalidOperationException>(() => controller.SetClickThrough(true));
 
         controller.Attach(new nint(10));
-        controller.SetClickThrough(true);
-        controller.SetClickThrough(false);
+        Assert.Throws<System.ComponentModel.Win32Exception>(() => controller.SetClickThrough(true));
     }
 
     [Fact]
@@ -102,6 +139,85 @@ public sealed class WindowsWidgetLayerControllerTests
         controller.Dispose();
 
         Assert.Throws<ObjectDisposedException>(() => controller.SetLayerMode(WidgetLayerMode.AlwaysOnTop));
+    }
+
+    [Theory]
+    [InlineData(0x0003u)]
+    [InlineData(0x000Au)]
+    [InlineData(0x0020u)]
+    public void ExternalWindowEventsReapplyTopmost(uint eventType)
+    {
+        using var controller = CreateController(out FakeTopmostInterop topmost, out _);
+        controller.Attach(new nint(10));
+        controller.SetLayerMode(WidgetLayerMode.AlwaysOnTop);
+
+        topmost.Raise(eventType);
+
+        Assert.Equal(2, topmost.SetCalls);
+        Assert.Equal(new nint(-1), topmost.LastWindowPosition.InsertAfter);
+        Assert.Equal(0x0013u, topmost.LastWindowPosition.Flags);
+    }
+
+    [Theory]
+    [InlineData(WidgetLayerMode.Normal)]
+    [InlineData(WidgetLayerMode.AlwaysOnBottom)]
+    public void LeavingTopmostStopsRecoveryFromLateCallbacks(WidgetLayerMode mode)
+    {
+        using var controller = CreateController(out FakeTopmostInterop topmost, out FakeWindowLayerApi bottomMostApi);
+        controller.Attach(new nint(10));
+        controller.SetLayerMode(WidgetLayerMode.AlwaysOnTop);
+        controller.SetLayerMode(mode);
+
+        topmost.Raise(0x0003);
+
+        Assert.Equal(1, topmost.SetCalls);
+        Assert.Equal(3, topmost.Unhooked.Count);
+        Assert.Equal(1, bottomMostApi.SetCalls);
+        Assert.Equal(mode == WidgetLayerMode.Normal ? new nint(-2) : new nint(1), bottomMostApi.LastInsertAfter);
+    }
+
+    [Fact]
+    public void RecoveryFailureIsRetriedOnTheNextExternalEvent()
+    {
+        using var controller = CreateController(out FakeTopmostInterop topmost, out _);
+        controller.Attach(new nint(10));
+        topmost.ReturnWindowPositionResult = false;
+        topmost.LastErrorCode = 5;
+        controller.SetLayerMode(WidgetLayerMode.AlwaysOnTop);
+        Assert.True(controller.Health.IsDegraded);
+
+        topmost.ReturnWindowPositionResult = true;
+        topmost.Raise(0x0003);
+
+        Assert.Equal(2, topmost.SetCalls);
+        Assert.False(controller.Health.IsDegraded);
+    }
+
+    [Fact]
+    public void NestedNativeCallbackDoesNotRecursivelyReapplyTopmost()
+    {
+        using var controller = CreateController(out FakeTopmostInterop topmost, out _);
+        controller.Attach(new nint(10));
+        topmost.OnSetWindowPos = () => topmost.Raise(0x0003);
+
+        controller.SetLayerMode(WidgetLayerMode.AlwaysOnTop);
+        topmost.Raise(0x000A);
+
+        Assert.Equal(2, topmost.SetCalls);
+    }
+
+    [Fact]
+    public void DisposingStopsRecoveryFromLateCallbacks()
+    {
+        var controller = CreateController(out FakeTopmostInterop topmost, out _);
+        controller.Attach(new nint(10));
+        controller.SetLayerMode(WidgetLayerMode.AlwaysOnTop);
+        controller.Dispose();
+
+        topmost.Raise(0x0003);
+
+        Assert.Equal(1, topmost.SetCalls);
+        Assert.Equal(3, topmost.Unhooked.Count);
     }
 
     private static WindowsWidgetLayerController CreateController(out FakeTopmostInterop topmost, out FakeWindowLayerApi bottomMostApi)
@@ -125,7 +241,15 @@ public sealed class WindowsWidgetLayerControllerTests
         public (nint WindowHandle, nint InsertAfter, uint Flags) LastWindowPosition { get; private set; }
         public bool ReturnWindowPositionResult { get; set; } = true;
         public int LastErrorCode { get; set; }
+        public int SetCalls { get; private set; }
+        public Action? OnSetWindowPos { get; set; }
         private int _nextHook = 1;
+
+        public void Raise(uint eventType)
+        {
+            var hook = Hooks.Single(hook => hook.Min == eventType);
+            hook.Callback(new nint(1), eventType, new nint(99), 0, 0, 0, 0);
+        }
 
         public nint SetWinEventHook(uint eventMin, uint eventMax, uint flags, WinEventCallback callback)
         {
@@ -141,13 +265,16 @@ public sealed class WindowsWidgetLayerControllerTests
 
         public bool SetWindowPos(nint windowHandle, nint insertAfter, uint flags)
         {
+            SetCalls++;
             LastWindowPosition = (windowHandle, insertAfter, flags);
+            OnSetWindowPos?.Invoke();
             return ReturnWindowPositionResult;
         }
     }
 
     private sealed class FakeWindowLayerApi : IWindowLayerApi
     {
+        public WindowPositionCallResult Result { get; set; } = new(true, 0);
         public int SetCalls { get; private set; }
         public nint LastInsertAfter { get; private set; }
 
@@ -157,7 +284,7 @@ public sealed class WindowsWidgetLayerControllerTests
         {
             SetCalls++;
             LastInsertAfter = insertAfter;
-            return new(true, 0);
+            return Result;
         }
     }
 }

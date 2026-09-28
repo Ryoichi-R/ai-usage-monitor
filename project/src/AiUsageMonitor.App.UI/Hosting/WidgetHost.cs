@@ -46,6 +46,7 @@ public sealed class WidgetHost : IAsyncDisposable
     private WelcomeWindow? _welcomeWindow;
     private bool _repositioning;
     private bool _layerDegraded;
+    private bool _layerAttached;
     private string? _lastClaudeState;
     private int _disposed;
 
@@ -95,7 +96,11 @@ public sealed class WidgetHost : IAsyncDisposable
         _window.UserMoveCompleted += () => _ = SaveUserPositionAsync();
         _window.Opened += (_, _) =>
         {
-            _layer.Attach(_window.TryGetPlatformHandle()?.Handle ?? 0);
+            if (!_layerAttached)
+            {
+                _layer.Attach(_window.TryGetPlatformHandle()?.Handle ?? 0);
+                _layerAttached = true;
+            }
             ApplyLayer();
             Reposition(true);
         };

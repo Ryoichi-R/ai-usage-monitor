@@ -14,6 +14,8 @@ public sealed class WindowsWidgetLayerController : IWidgetLayerController
     private TopmostWindowController? _topmost;
     private WidgetLayerMode _mode = WidgetLayerMode.Normal;
     private bool _disposed;
+    private bool _recoveringTopmost;
+    private WidgetLayerHealth _health;
 
     public WindowsWidgetLayerController()
         : this(handle => new TopmostWindowController(handle), NativeWindowLayerApi.Instance)
@@ -26,7 +28,7 @@ public sealed class WindowsWidgetLayerController : IWidgetLayerController
         _bottomMostApi = bottomMostApi;
     }
 
-    public WidgetLayerHealth Health => _topmost is { } topmost ? MapHealth(topmost.Health) : default;
+    public WidgetLayerHealth Health => _health;
 
     public event Action<WidgetLayerHealth>? HealthChanged;
 
@@ -37,7 +39,11 @@ public sealed class WindowsWidgetLayerController : IWidgetLayerController
             throw new InvalidOperationException("Already attached to a window handle.");
         _windowHandle = nativeWindowHandle;
         _topmost = _topmostFactory(nativeWindowHandle);
-        _topmost.HealthChanged += health => HealthChanged?.Invoke(MapHealth(health));
+        _topmost.RecoveryRequested += RecoverTopmost;
+        _topmost.HealthChanged += health =>
+        {
+            if (_mode == WidgetLayerMode.AlwaysOnTop) SetHealth(MapHealth(health));
+        };
     }
 
     public void SetLayerMode(WidgetLayerMode mode)
@@ -46,8 +52,10 @@ public sealed class WindowsWidgetLayerController : IWidgetLayerController
         EnsureAttached();
         _mode = mode;
         _topmost!.SetEnabled(mode == WidgetLayerMode.AlwaysOnTop);
-        if (mode != WidgetLayerMode.AlwaysOnTop)
-            BottomMostStrategy.Apply(_windowHandle, ToLayerStrategy(mode), _bottomMostApi);
+        if (mode == WidgetLayerMode.AlwaysOnTop)
+            RecoverTopmost();
+        else
+            ApplyNonTopmostLayer();
     }
 
     public void SetClickThrough(bool enabled)
@@ -63,15 +71,44 @@ public sealed class WindowsWidgetLayerController : IWidgetLayerController
         if (_windowHandle == 0) return false;
         return _mode == WidgetLayerMode.AlwaysOnTop
             ? _topmost!.TryRecover()
-            : BottomMostStrategy.Apply(_windowHandle, ToLayerStrategy(_mode), _bottomMostApi);
+            : ApplyNonTopmostLayer();
+    }
+
+    private bool ApplyNonTopmostLayer()
+    {
+        WindowPositionCallResult result = BottomMostStrategy.ApplyWithResult(_windowHandle, ToLayerStrategy(_mode), _bottomMostApi);
+        SetHealth(result.Succeeded ? default : new(true, "SetWindowPos", result.ErrorCode));
+        return result.Succeeded;
+    }
+
+    private void SetHealth(WidgetLayerHealth health)
+    {
+        if (_health == health) return;
+        _health = health;
+        HealthChanged?.Invoke(health);
     }
 
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
+        if (_topmost is not null) _topmost.RecoveryRequested -= RecoverTopmost;
         _topmost?.Dispose();
         HealthChanged = null;
+    }
+
+    // Out-of-context WinEvent callbacks run on the thread that registered the hooks.
+    // Apply without activation, and suppress callbacks nested inside SetWindowPos.
+    private void RecoverTopmost()
+    {
+        if (_disposed || _mode != WidgetLayerMode.AlwaysOnTop || _recoveringTopmost) return;
+        _recoveringTopmost = true;
+        try
+        {
+            _topmost?.TryRecover();
+            if (_topmost is not null) SetHealth(MapHealth(_topmost.Health));
+        }
+        finally { _recoveringTopmost = false; }
     }
 
     private void EnsureAttached()

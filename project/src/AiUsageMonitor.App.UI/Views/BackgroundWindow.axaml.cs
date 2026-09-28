@@ -98,9 +98,12 @@ public partial class BackgroundWindow : Window
         if (handle == 0) return;
         try
         {
-            _layer.Attach(handle);
+            if (!_attached)
+            {
+                _layer.Attach(handle);
+                _attached = true;
+            }
             _layer.SetClickThrough(true);
-            _attached = true;
         }
         catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
         {

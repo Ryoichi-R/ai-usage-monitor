@@ -13,6 +13,7 @@ public sealed class WindowsCompositionTests
     {
         var services = WindowsComposition.Create();
         Assert.IsType<WindowsAppPathProvider>(services.AppPaths);
+        Assert.IsType<WindowsDiagnosticLog>(services.Diagnostic.Target);
         Assert.EndsWith(Path.Combine("CodexUsageMonitor", "settings.json"), services.AppPaths.SettingsFilePath, StringComparison.Ordinal);
         Assert.NotNull(services.CodexLifetimeGuardFactory);
         Assert.Null(services.CodexProcessLauncher);

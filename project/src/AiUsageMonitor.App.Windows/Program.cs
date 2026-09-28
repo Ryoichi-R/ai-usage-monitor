@@ -85,9 +85,11 @@ internal static class WindowsComposition
         var paths = new WindowsAppPathProvider();
         string directory = AppContext.BaseDirectory;
         var guards = new WindowsProcessLifetimeGuardFactory();
+        var diagnostics = new WindowsDiagnosticLog(Path.Combine(Path.GetDirectoryName(paths.SettingsFilePath)!, "diagnostics.log"));
         return new WidgetHostServices
         {
             AppPaths = paths,
+            Diagnostic = diagnostics.Write,
             Startup = new WindowsStartupService(),
             ShellOpener = new WindowsShellOpener(),
             CreateLayerController = () => new WindowsWidgetLayerController(),

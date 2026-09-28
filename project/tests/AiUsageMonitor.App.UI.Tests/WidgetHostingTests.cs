@@ -124,6 +124,9 @@ public sealed class WidgetHostingTests
             Assert.False(host.Window.IsVisible);
             host.ShowWidget();
             Assert.True(host.Window.IsVisible);
+            host.ToggleWidgetVisibility();
+            host.ShowWidget();
+            Assert.Equal(1, layers[0].AttachCalls);
             host.ShowSettings();
             Assert.NotNull(host.OpenSettingsWindow);
             host.OpenSettingsWindow!.Close();
@@ -243,7 +246,11 @@ public sealed class WidgetHostingTests
         public WidgetLayerMode Mode { get; private set; }
         public bool ClickThrough { get; private set; }
         public bool Disposed { get; private set; }
-        public void Attach(nint nativeWindowHandle) { }
+        public int AttachCalls { get; private set; }
+        public void Attach(nint nativeWindowHandle)
+        {
+            if (++AttachCalls > 1) throw new InvalidOperationException("Already attached to a window handle.");
+        }
         public void SetLayerMode(WidgetLayerMode mode) => Mode = mode;
         public void SetClickThrough(bool enabled) => ClickThrough = enabled;
         public bool TryRecoverLayer() => true;

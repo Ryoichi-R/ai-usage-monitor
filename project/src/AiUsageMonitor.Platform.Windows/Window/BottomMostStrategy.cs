@@ -10,8 +10,11 @@ internal static class BottomMostStrategy
         unchecked((int)WindowInterop.RegisterWindowMessage("TaskbarCreated"));
 
     internal static bool Apply(nint hWnd, LayerStrategy strategy, IWindowLayerApi? api = null)
+        => ApplyWithResult(hWnd, strategy, api).Succeeded;
+
+    internal static WindowPositionCallResult ApplyWithResult(nint hWnd, LayerStrategy strategy, IWindowLayerApi? api = null)
     {
-        if (hWnd == 0) return false;
+        if (hWnd == 0) return new(false, 1400);
         try
         {
             api ??= NativeWindowLayerApi.Instance;
@@ -25,11 +28,15 @@ internal static class BottomMostStrategy
                 hWnd,
                 insertAfter,
                 WindowInterop.SWP_NOMOVE | WindowInterop.SWP_NOSIZE | WindowInterop.SWP_NOACTIVATE);
-            return result.Succeeded;
+            return result;
+        }
+        catch (System.ComponentModel.Win32Exception exception)
+        {
+            return new(false, exception.NativeErrorCode);
         }
         catch
         {
-            return false;
+            return new(false, 0);
         }
     }
 

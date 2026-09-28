@@ -29,6 +29,10 @@ public sealed class BackgroundWindowTests
             window.SetPresentationRequested(false);
             Assert.False(window.IsVisible);
             Assert.False(window.IsPresentationRequested);
+            window.SetPresentationRequested(true);
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(window.IsVisible);
+            Assert.Equal(1, layer.AttachCalls);
         }
         finally
         {
@@ -154,7 +158,12 @@ public sealed class BackgroundWindowTests
 
         public event Action<WidgetLayerHealth>? HealthChanged;
 
-        public void Attach(nint nativeWindowHandle) => AttachedHandle = nativeWindowHandle;
+        public int AttachCalls { get; private set; }
+        public void Attach(nint nativeWindowHandle)
+        {
+            if (++AttachCalls > 1) throw new InvalidOperationException("Already attached to a window handle.");
+            AttachedHandle = nativeWindowHandle;
+        }
 
         public void SetLayerMode(WidgetLayerMode mode)
         {
