@@ -129,11 +129,13 @@ $env:AI_USAGE_MONITOR_TEST_ARTIFACTS_ROOT = $testOutput.ArtifactsPath
     # 母集団から意図せず外れたproduction assemblyがあると、閾値を満たしていても実際には
     # 未検証のコードが混ざる。src配下の実在プロジェクトとcoverageTargetsを突き合わせ、
     # どちらにも属さないものが現れた時点で失敗させる。除外は理由付きでここに明示する。
-    # macOS専用プロジェクトはWindowsのcoverage母集団に含めない。Platform.MacはmacOSのtest実行
-    # （AiUsageMonitor.Mac.slnx）で検証し、App.MacはMac手動受入表（D4）で受け入れる。
+    # macOS専用プロジェクトはWindowsのcoverage母集団に含めない。Platform.Mac・Claude.Mac・
+    # Claude.Bridge.MacはmacOSのtest実行（AiUsageMonitor.Mac.slnx）で検証し、App.MacはMac手動受入表（D4）で受け入れる。
     $intentionallyUncoveredPackages = [ordered]@{
         'AiUsageMonitor.Platform.Mac' = 'macOS-only native interop; verified by the macOS test run (AiUsageMonitor.Mac.slnx).'
         'AiUsageMonitor.App.Mac' = 'macOS thin host; accepted through the Mac manual acceptance table (D4).'
+        'AiUsageMonitor.Claude.Mac' = 'macOS-only PTY/VT Claude acquisition; verified by the macOS test run (AiUsageMonitor.Mac.slnx).'
+        'AiUsageMonitor.Claude.Bridge.Mac' = 'macOS-only statusLine helper; verified by the macOS test run (AiUsageMonitor.Mac.slnx).'
     }
     $productionPackages = @(
         Get-ChildItem -Path (Join-Path $projectRoot 'src') -Directory |
@@ -251,9 +253,38 @@ $env:AI_USAGE_MONITOR_TEST_ARTIFACTS_ROOT = $testOutput.ArtifactsPath
         }
     }
 
-    $valid = $lineCoverage.Count
-    if ($valid -eq 0) { throw 'No AiUsageMonitor source lines were found in coverage reports.' }
-    $covered = @($lineCoverage.Values | Where-Object { $_ }).Count
+    if ($lineCoverage.Count -eq 0) { throw 'No AiUsageMonitor source lines were found in coverage reports.' }
+    # 計画Phase 2の母集団: 旧WPF版（App.WpfLegacy）はWindows受入の比較基準として残す間、
+    # gateの母集団から外して別集計する。分母から黙って消さず、行数と率をmanifestへ残す。
+    # legacyを削除するときは、この別集計も同じ変更で外す。
+    $separatelyReportedSources = [ordered]@{
+        'AiUsageMonitor.App.WpfLegacy' = 'Legacy WPF host kept as the Phase 2 comparison baseline until Windows acceptance; reported separately, not gated.'
+    }
+    $sourceTotals = @{}
+    foreach ($entry in $lineCoverage.GetEnumerator()) {
+        $sourceName = $entry.Key.Split('|')[0]
+        if (-not $sourceTotals.ContainsKey($sourceName)) { $sourceTotals[$sourceName] = @(0, 0) }
+        $sourceTotals[$sourceName][1]++
+        if ($entry.Value) { $sourceTotals[$sourceName][0]++ }
+    }
+    $bySource = @($sourceTotals.Keys | Sort-Object | ForEach-Object {
+        [pscustomobject]@{
+            source = $_
+            coveredLines = $sourceTotals[$_][0]
+            totalLines = $sourceTotals[$_][1]
+            coveragePercent = [Math]::Round(($sourceTotals[$_][0] * 100.0) / $sourceTotals[$_][1], 2)
+            gated = -not $separatelyReportedSources.Contains($_)
+        }
+    })
+    foreach ($source in $separatelyReportedSources.Keys) {
+        if (-not $sourceTotals.ContainsKey($source) -and $productionPackages -contains $source) {
+            throw "Separately reported source produced no coverage lines: $source"
+        }
+    }
+    $gated = @($bySource | Where-Object gated)
+    $valid = ($gated | Measure-Object -Property totalLines -Sum).Sum
+    if (-not $valid) { throw 'No gated AiUsageMonitor source lines were found in coverage reports.' }
+    $covered = ($gated | Measure-Object -Property coveredLines -Sum).Sum
     $percentage = [Math]::Round(($covered * 100.0) / $valid, 2)
 
     # OS別の計測母集団をmanifestとして残す。どのassemblyを測り、どれをなぜ除外したかが
@@ -267,6 +298,13 @@ $env:AI_USAGE_MONITOR_TEST_ARTIFACTS_ROOT = $testOutput.ArtifactsPath
         coveredLines           = $covered
         totalLines             = $valid
         measuredPackages       = @($measuredPackages | Sort-Object)
+        gatedSources           = @($gated | ForEach-Object source)
+        separatelyReported     = @(
+            $separatelyReportedSources.Keys | Sort-Object | ForEach-Object {
+                [pscustomobject]@{ source = $_; reason = $separatelyReportedSources[$_] }
+            }
+        )
+        bySource               = $bySource
         intentionallyUncovered = @(
             $intentionallyUncoveredPackages.Keys | Sort-Object | ForEach-Object {
                 [pscustomobject]@{ package = $_; reason = $intentionallyUncoveredPackages[$_] }
@@ -275,7 +313,11 @@ $env:AI_USAGE_MONITOR_TEST_ARTIFACTS_ROOT = $testOutput.ArtifactsPath
     } | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $manifestPath -Encoding utf8
 
     "Coverage scope: $([string]::Join(', ', $measuredPackages))"
+    "Coverage gate population: $([string]::Join(', ', @($gated | ForEach-Object source)))"
     "Coverage: $percentage% ($covered/$valid lines)"
+    foreach ($row in @($bySource | Where-Object { -not $_.gated })) {
+        "Reported separately (not gated): $($row.source) $($row.coveragePercent)% ($($row.coveredLines)/$($row.totalLines) lines)"
+    }
     "Excluded from the measured population: $([string]::Join(', ', @($intentionallyUncoveredPackages.Keys | Sort-Object)))"
     "Reports: $($testOutput.ResultsPath)"
     "Manifest: $manifestPath"

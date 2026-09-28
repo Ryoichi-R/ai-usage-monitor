@@ -50,10 +50,11 @@ public sealed class ClaudeManagedSettingsGuardTests
     public void MacSourcesIncludeManagedPreferencesForSystemAndUser()
     {
         var guard = ClaudeManagedSettingsGuard.ForMacOS("/Users/someone", "/Library");
-        Assert.Contains("/Users/someone/.claude/remote-settings.json", guard.Paths);
-        Assert.Contains("/Library/Application Support/ClaudeCode/managed-settings.d", guard.Paths);
-        Assert.Contains("/Library/Managed Preferences/someone/com.anthropic.claudecode.plist", guard.Paths);
-        Assert.Contains("/Users/someone/Library/Managed Preferences/com.anthropic.claudecode.plist", guard.Paths);
+        // Build the expected paths with the host separator so the shared test also runs on Windows.
+        Assert.Contains(Path.Combine("/Users/someone", ".claude", "remote-settings.json"), guard.Paths);
+        Assert.Contains(Path.Combine("/Library", "Application Support", "ClaudeCode", "managed-settings.d"), guard.Paths);
+        Assert.Contains(Path.Combine("/Library", "Managed Preferences", "someone", "com.anthropic.claudecode.plist"), guard.Paths);
+        Assert.Contains(Path.Combine("/Users/someone", "Library", "Managed Preferences", "com.anthropic.claudecode.plist"), guard.Paths);
         Assert.Equal(7, guard.Paths.Count);
         Assert.Equal("MANAGED_SETTINGS_PRESENT", ClaudeManagedSettingsGuard.ReasonCode);
     }
