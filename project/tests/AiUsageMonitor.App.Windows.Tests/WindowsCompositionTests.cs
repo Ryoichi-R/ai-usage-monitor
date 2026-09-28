@@ -18,11 +18,23 @@ public sealed class WindowsCompositionTests
         Assert.NotNull(services.CodexLifetimeGuardFactory);
         Assert.Null(services.CodexProcessLauncher);
         Assert.NotNull(services.StatusIcon);
+        Assert.True(services.OpenSettingsOnTrayDoubleClick);
         Assert.Contains("powershell.exe", services.ClaudeSetupExample!, StringComparison.Ordinal);
         Assert.IsType<ClaudeCliActiveSource>(services.ClaudeSourceFactory(new ClaudeActiveSourceConfiguration(null, "bridge", TimeSpan.FromSeconds(1))));
         var listener = services.CreateClaudeListener!();
         Assert.IsType<ClaudeUsagePipeServer>(listener);
         await listener.DisposeAsync();
         Assert.Equal("AiUsageMonitor.App", typeof(WindowsComposition).Assembly.GetName().Name);
+
+        // Headless screens have no HMONITOR, so no stable display identity is claimed.
+        var window = new Avalonia.Controls.Window();
+        window.Show();
+        try
+        {
+            Avalonia.Platform.Screen? screen = window.Screens.Primary ?? (window.Screens.All.Count > 0 ? window.Screens.All[0] : null);
+            Assert.NotNull(screen);
+            Assert.Null(services.ResolveScreenStableId!(screen));
+        }
+        finally { window.Close(); }
     }
 }

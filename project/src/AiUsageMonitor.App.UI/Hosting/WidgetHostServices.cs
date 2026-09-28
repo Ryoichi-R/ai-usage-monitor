@@ -52,6 +52,12 @@ public sealed class WidgetHostServices
     /// <summary>通知領域／メニューバーのアイコン。nullならアイコンを出さない（Headless test用）。</summary>
     public WindowIcon? StatusIcon { get; init; }
 
+    /// <summary>
+    /// 常駐アイコンのダブルクリックで設定画面を開く（WPF版の通知領域アイコンと同じ操作）。
+    /// macOSのメニューバーはクリックでメニューを開くため、Windowsのhostだけが有効にする。
+    /// </summary>
+    public bool OpenSettingsOnTrayDoubleClick { get; init; }
+
     /// <summary>理由コードだけの診断。生画面・usage・accountを渡さない。</summary>
     public Action<string, Exception?> Diagnostic { get; init; } = (_, _) => { };
 

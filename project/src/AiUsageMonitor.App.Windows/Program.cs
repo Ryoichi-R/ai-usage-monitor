@@ -12,7 +12,6 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Themes.Fluent;
-using Avalonia.Threading;
 
 namespace AiUsageMonitor.App.Windows;
 
@@ -43,36 +42,8 @@ internal sealed class WindowsApp : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            var services = WindowsComposition.Create();
-            WidgetHost? host = null;
-            WindowsInstanceActivationChannel? activation = null;
-            bool stopping = false;
-            async Task StopAsync()
-            {
-                if (stopping) return;
-                stopping = true;
-                try { if (host is not null) await host.DisposeAsync(); }
-                finally { activation?.Dispose(); desktop.Shutdown(); }
-            }
-            host = new WidgetHost(services, () => _ = StopAsync());
-            activation = WindowsInstanceActivationChannel.Listen(Program.ActivationName,
-                () => Dispatcher.UIThread.Post(host.ShowWidget));
-            desktop.ShutdownRequested += (_, e) =>
-            {
-                if (stopping) return;
-                e.Cancel = true;
-                _ = StopAsync();
-            };
-            Dispatcher.UIThread.Post(async () =>
-            {
-                try { await host.StartAsync(); }
-                catch (Exception)
-                {
-                    var notice = new AiUsageMonitor.App.UI.Views.NoticeWindow("AI Usage Monitorを起動できませんでした。設定とインストール先を確認してください。");
-                    notice.Closed += (_, _) => _ = StopAsync();
-                    notice.Show();
-                }
-            });
+            var lifecycle = WindowsProductLifecycle.Start(() => desktop.Shutdown(), WindowsComposition.Create(), Program.ActivationName);
+            desktop.ShutdownRequested += (_, e) => lifecycle.OnShutdownRequested(e);
         }
         base.OnFrameworkInitializationCompleted();
     }
@@ -112,6 +83,7 @@ internal static class WindowsComposition
             },
             ReadmePath = Path.Combine(directory, "README.md"),
             StatusIcon = new WindowIcon(Path.Combine(directory, "ai-usage-monitor.ico")),
+            OpenSettingsOnTrayDoubleClick = true,
         };
     }
 }

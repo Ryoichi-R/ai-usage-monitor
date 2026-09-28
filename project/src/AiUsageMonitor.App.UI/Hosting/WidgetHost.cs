@@ -28,6 +28,7 @@ public sealed class WidgetHost : IAsyncDisposable
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
     private readonly ClaudeManualRefreshState _manualRefreshState = new();
     private readonly ClaudeUsageRuntime _claudeRuntime;
+    private readonly TrayDoubleClickDetector _trayDoubleClick = new(SystemDoubleClickTime);
     private FileSystemSettingsStore? _store;
     private AppSettings _settings = new AppSettings().Normalized();
     private UsageViewModel? _viewModel;
@@ -293,14 +294,25 @@ public sealed class WidgetHost : IAsyncDisposable
         menu.Items.Add(new NativeMenuItemSeparator());
         menu.Items.Add(MenuItem("終了", _shutdown));
         UpdateDisplayModeChecks();
-        return new TrayIcon
+        var tray = new TrayIcon
         {
             Icon = _services.StatusIcon,
             ToolTipText = TrayToolTip(),
             Menu = menu,
             IsVisible = true,
         };
+        if (_services.OpenSettingsOnTrayDoubleClick) tray.Clicked += (_, _) => OnTrayClicked();
+        return tray;
     }
+
+    // WPF版と同じく、常駐アイコンのダブルクリックで設定画面を開く。
+    internal void OnTrayClicked()
+    {
+        if (_trayDoubleClick.RegisterClick()) ShowSettings();
+    }
+
+    private static TimeSpan SystemDoubleClickTime() =>
+        Application.Current?.PlatformSettings?.GetDoubleTapTime(Avalonia.Input.PointerType.Mouse) ?? TimeSpan.FromMilliseconds(500);
 
     private static NativeMenuItem MenuItem(string header, Action action)
     {

@@ -127,6 +127,13 @@ public sealed class WidgetHostingTests
             host.ToggleWidgetVisibility();
             host.ShowWidget();
             Assert.Equal(1, layers[0].AttachCalls);
+            // WPF版と同じく、常駐アイコンは1回のクリックでは何もせず、ダブルクリックで設定を開く。
+            host.OnTrayClicked();
+            Assert.Null(host.OpenSettingsWindow);
+            host.OnTrayClicked();
+            Assert.NotNull(host.OpenSettingsWindow);
+            host.OpenSettingsWindow!.Close();
+            Assert.Null(host.OpenSettingsWindow);
             host.ShowSettings();
             Assert.NotNull(host.OpenSettingsWindow);
             host.OpenSettingsWindow!.Close();
