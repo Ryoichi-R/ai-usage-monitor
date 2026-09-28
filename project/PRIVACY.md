@@ -3,6 +3,8 @@
 本アプリはCodex CLIの公式App Serverを子プロセスとして起動し、OpenAIへの利用枠取得を行います。本アプリ自身は認証ファイル、cookie、アクセストークン、更新トークンを読み取り、複製、保存しません。
 
 設定は `%LOCALAPPDATA%\CodexUsageMonitor\settings.json` に保存します。この旧製品名を含むパスは、AI Usage Monitorへの改称後も既存設定を引き継ぐ互換識別子です。複数アカウントでは利用者が付けた表示名、ローカルID、`CODEX_HOME` パス、監視・表示フラグを保存します。利用枠、追加利用額、残高、アカウントemail、認証情報は保存しません。ChatGPTアカウントの重複検出に使う非null emailはprocess内メモリだけで比較し、公開snapshot、画面、ログ、settingsへ渡しません。設定を削除する場合は、アプリ終了後にこのディレクトリをバックアップしてから削除してください。設定画面でアカウントを削除しても `CODEX_HOME` の実フォルダーは削除しません。
+
+Windowsのウィジェット（Avalonia版）は、表示の原因を後から確認できるよう、同じフォルダーの `diagnostics.log` に理由コードと例外の型名・HRESULTだけを書きます（256 KiBを超えると `diagnostics.log.1` へ1世代だけ退避）。例外message、stack trace、画面、使用率、account情報は書きません。
 ## Claude Code連携
 
 Claude Code連携はopt-inです。既定の自動取得では、本アプリが署名済みの公式Claude CLIを監視アプリ専用の空フォルダーで子プロセスとして起動し、`/usage`だけを送ります。公式CLIが既存subscription認証を使ってAnthropicへ接続しますが、本アプリ自身は認証情報や非公開endpointへ触れません。
