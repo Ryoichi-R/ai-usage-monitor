@@ -9,8 +9,6 @@ using AiUsageMonitor.Platform;
 using AiUsageMonitor.Platform.Mac;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Media;
-using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 
 namespace AiUsageMonitor.App.Mac;
@@ -156,7 +154,7 @@ internal sealed class DemoWidgetHost : IDisposable
 
         var tray = new TrayIcon
         {
-            Icon = CreateTrayIcon(),
+            Icon = MacStatusIcon.Create(),
             ToolTipText = "AI Usage Monitor（デモ表示）",
             Menu = menu,
             IsVisible = true,
@@ -214,20 +212,6 @@ internal sealed class DemoWidgetHost : IDisposable
         var item = new NativeMenuItem(header);
         item.Click += (_, _) => action();
         return item;
-    }
-
-    private static WindowIcon CreateTrayIcon()
-    {
-        using var bitmap = new RenderTargetBitmap(new PixelSize(36, 36), new Vector(144, 144));
-        using (DrawingContext context = bitmap.CreateDrawingContext())
-        {
-            context.DrawEllipse(Brushes.White, null, new Point(9, 9), 7, 7);
-            context.DrawRectangle(Brushes.White, null, new Rect(3, 13, 12, 2));
-        }
-        using var stream = new MemoryStream();
-        bitmap.Save(stream, new PngBitmapEncoderOptions());
-        stream.Position = 0;
-        return new WindowIcon(stream);
     }
 
     // デモではフォルダーを作成しない。製品ではPhase 3のIAppPathProvider実装が用途別パスを解決する。

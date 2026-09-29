@@ -22,6 +22,7 @@
     <ProjectReference Include="..\AiUsageMonitor.Platform.Mac\AiUsageMonitor.Platform.Mac.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <EmbeddedResource Include="../AiUsageMonitor.App.WpfLegacy/Assets/ai-usage-monitor.ico" LogicalName="AiUsageMonitor.App.Mac.AppIcon.ico" />
     <Content Include="../../README.md" Link="README.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup><InternalsVisibleTo Include="AiUsageMonitor.App.Mac.Tests" /></ItemGroup>
