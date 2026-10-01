@@ -48,6 +48,8 @@ public sealed class WidgetHost : IAsyncDisposable
     private bool _repositioning;
     private bool _layerDegraded;
     private bool _layerAttached;
+    private bool _restoringInitialPlacement = true;
+    private InformationGeometry? _initialPlacementGeometry;
     private string? _lastClaudeState;
     private int _disposed;
 
@@ -94,6 +96,7 @@ public sealed class WidgetHost : IAsyncDisposable
         _layer.HealthChanged += OnLayerHealthChanged;
         _background = new BackgroundLayerCoordinator(_window, _services.CreateLayerController(), _services.Diagnostic);
         _window.RepositionRequested += Reposition;
+        _window.UserMoveStarted += () => _restoringInitialPlacement = false;
         _window.UserMoveCompleted += () => _ = SaveUserPositionAsync();
         _window.Opened += (_, _) =>
         {
@@ -104,6 +107,7 @@ public sealed class WidgetHost : IAsyncDisposable
             }
             ApplyLayer();
             Reposition(true);
+            RecordStartupPlacement("placement-startup-open");
         };
         _window.Screens.Changed += (_, _) => Dispatcher.UIThread.Post(() => Reposition(true));
         _window.Show();
@@ -116,6 +120,9 @@ public sealed class WidgetHost : IAsyncDisposable
         ConfigureClaude();
         ApplyStartupSetting();
         await RefreshAsync(_lifetime.Token);
+        // Opened runs before the initial layout and provider-dependent height settle.
+        // Keep applying the saved intent until that first refresh has been laid out.
+        Dispatcher.UIThread.Post(CompleteInitialPlacement, DispatcherPriority.Background);
         _codexPollTask = _codexCoordinator.RunPeriodicPollingAsync(_lifetime.Token);
         _claudePollTask = PollClaudeAsync(_lifetime.Token);
         if (isFirstRun) ShowWelcome();
@@ -142,6 +149,32 @@ public sealed class WidgetHost : IAsyncDisposable
 
     // ---- 配置・層 ----
 
+    private void CompleteInitialPlacement()
+    {
+        if (_disposed != 0 || _window is null || !_restoringInitialPlacement) return;
+        _window.UpdateLayout();
+        Reposition(true);
+        InformationGeometry geometry = _window.GetInformationGeometry();
+        if (_initialPlacementGeometry != geometry)
+        {
+            // SizeToContent and scroll guidance may invalidate one another's layout.
+            // Finish only after the geometry stays unchanged across layout passes.
+            _initialPlacementGeometry = geometry;
+            Dispatcher.UIThread.Post(CompleteInitialPlacement, DispatcherPriority.Background);
+            return;
+        }
+        _restoringInitialPlacement = false;
+        RecordStartupPlacement("placement-startup-settled");
+    }
+
+    private void RecordStartupPlacement(string phase)
+    {
+        if (_window is null) return;
+        // Geometry only: never include provider payloads, usage values or account data.
+        int height = (int)Math.Round(_window.GetInformationGeometry().HeightDip);
+        _services.Diagnostic($"{phase}:height:{height}:y:{_window.Position.Y}", null);
+    }
+
     private void Reposition(bool fullApply)
     {
         if (_window is null || _repositioning || _window.IsUserMoving) return;
@@ -154,7 +187,7 @@ public sealed class WidgetHost : IAsyncDisposable
         {
             ScreenInfo screen;
             PixelPoint position;
-            if (fullApply || _settings.PlacementMode == PlacementMode.Preset)
+            if (fullApply || _restoringInitialPlacement || _settings.PlacementMode == PlacementMode.Preset)
             {
                 screen = WidgetScreenPlacement.SelectScreen(screens, _settings.MonitorDeviceName, _settings.MonitorStableId)!.Value;
                 _window.SetWorkAreaHeight(screen.DipWorkArea.Height);
