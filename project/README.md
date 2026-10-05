@@ -134,7 +134,7 @@ CodexとClaudeで同じ水平位置に揃えます。
 
 ## macOS 開発版（Apple Silicon）
 
-共通Avalonia UI、Codex stdio監視、プロセス回収helper、メニューバー、LaunchAgentの実装があります。macOSのClaude取得は、署名検証付きPTYでの`/usage`取得とstatusLine受信に対応しています。active取得は検証済みCLI 2.1.274に限定し、版変更時は再検証が必要です。実機UI・実CLI受入完了前の開発版です。
+共通Avalonia UI、Codex stdio監視、プロセス回収helper、メニューバー、LaunchAgentの実装があります。macOSのClaude取得は、署名検証付きPTYでの`/usage`取得とstatusLine受信に対応しています。active取得は検証済みCLI 2.1.285に限定し、版変更時は再検証が必要です。実機UI・実CLI受入完了前の開発版です。
 
 ```powershell
 dotnet build AiUsageMonitor.Mac.slnx

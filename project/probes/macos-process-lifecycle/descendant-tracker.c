@@ -714,7 +714,7 @@ static void trial_helper(bool pty, const char *kind, const char *truth, int repo
     static tracker_t tracker;
     tracker_init(&tracker, NULL);
     char *argv[] = { self_path, "--fake", (char *)kind, (char *)truth, NULL };
-    char *envp[] = { tracker.token, NULL };
+    char *envp[] = { "DISABLE_AUTOUPDATER=1", tracker.token, NULL };
     launch_t launch = launch_tracked(&tracker, pty, self_path, argv, envp, NULL, NULL);
     char output[1024];
     size_t used = 0;
@@ -824,7 +824,7 @@ static void owner_app(bool separate_helper, bool pty, const char *journal, const
         static tracker_t tracker;
         tracker_init(&tracker, journal);
         char *argv[] = { self_path, "--fake", "plain", (char *)truth, NULL };
-        char *envp[] = { tracker.token, NULL };
+        char *envp[] = { "DISABLE_AUTOUPDATER=1", tracker.token, NULL };
         launch_t launch = launch_tracked(&tracker, pty, self_path, argv, envp, NULL, NULL);
         pid_t truth_pids[2];
         (void)read_truth_pids(truth, truth_pids, 2, 2000);
@@ -1178,7 +1178,7 @@ static int observe_helper(const char *mode, const char *team_id, const char *bin
     const char *temporary = getenv("TMPDIR");
     (void)snprintf(tmpdir, sizeof(tmpdir), "TMPDIR=%s", temporary != NULL ? temporary : "/private/tmp/");
     char *envp[] = { home, user, logname, tmpdir, "PATH=/usr/bin:/bin:/usr/sbin:/sbin", "LANG=en_US.UTF-8",
-                     pty ? "TERM=xterm-256color" : "TERM=dumb", tracker.token, NULL };
+                     pty ? "TERM=xterm-256color" : "TERM=dumb", "DISABLE_AUTOUPDATER=1", tracker.token, NULL };
     char *child_argv[64];
     int child_argc = 0;
     child_argv[child_argc++] = (char *)binary;

@@ -135,11 +135,7 @@ public sealed class ClaudeCliActiveSource : IClaudeUsageSource
                     session,
                     version,
                     cancellationToken).ConfigureAwait(false);
-                observation = Observation(
-                    result,
-                    result.Availability == UsageAvailability.Available
-                        ? ClaudeUsageSourceKind.CliScreen
-                        : ClaudeUsageSourceKind.StatusLineActive);
+                observation = Observation(result);
             }
             finally
             {
@@ -281,7 +277,7 @@ public sealed class ClaudeCliActiveSource : IClaudeUsageSource
 
     private static ClaudeUsageObservation Observation(
         UsageSnapshot snapshot,
-        ClaudeUsageSourceKind source = ClaudeUsageSourceKind.StatusLineActive) =>
+        ClaudeUsageSourceKind source = ClaudeUsageSourceKind.CliScreen) =>
         new(source, snapshot);
 
     private static UsageSnapshot Failure(

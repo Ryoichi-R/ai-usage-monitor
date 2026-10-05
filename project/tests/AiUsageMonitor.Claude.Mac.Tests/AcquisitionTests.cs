@@ -43,9 +43,10 @@ public sealed class AcquisitionTests
     }
 
     [Theory]
-    [InlineData("2.1.274 (Claude Code)", true, true, null)]
+    [InlineData("2.1.285 (Claude Code)", true, true, null)]
+    [InlineData("2.1.274 (Claude Code)", true, false, "CLI_VERSION_REVALIDATION_REQUIRED")]
     [InlineData("2.1.999 (Claude Code)", true, false, "CLI_VERSION_REVALIDATION_REQUIRED")]
-    [InlineData("2.1.274", false, false, "REQUIRED_FLAG_MISSING")]
+    [InlineData("2.1.285", false, false, "REQUIRED_FLAG_MISSING")]
     public async Task CapabilityProbesAreSupervisedAndVersionBound(string version, bool flags, bool supported, string? reason)
     {
         using var temp = new Scratch(); var launcher = new ProbeLauncher(version, flags);
@@ -60,7 +61,7 @@ public sealed class AcquisitionTests
     [InlineData(ManagedProcessOutcome.SupervisionFailed, "PROCESS_CLEANUP_FAILED", false)]
     public async Task CapabilityProbeFailsClosedOnCleanupOutcomeAndQuarantinesEscapes(ManagedProcessOutcome outcome, string reason, bool quarantined)
     {
-        using var temp = new Scratch(); var launcher = new ProbeLauncher("2.1.274 (Claude Code)", true, outcome);
+        using var temp = new Scratch(); var launcher = new ProbeLauncher("2.1.285 (Claude Code)", true, outcome);
         var quarantine = new ClaudeActiveQuarantine(Path.Combine(temp.Path, "state", "claude-active-quarantine"));
         var probe = new MacClaudeCapabilityProbe(launcher, new ClaudeLaunchPolicy(temp.Path, temp.Path), new Workspace(temp.Path), quarantine);
         var result = await probe.ProbeAsync("/fake", TimeSpan.FromSeconds(1), CancellationToken.None);

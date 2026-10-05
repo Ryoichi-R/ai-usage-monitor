@@ -1,5 +1,7 @@
 using AiUsageMonitor.Claude.Acquisition;
 using AiUsageMonitor.Claude.Cli;
+using AiUsageMonitor.Claude.Usage;
+using AiUsageMonitor.Core.Presentation;
 using AiUsageMonitor.Core.Usage;
 
 namespace AiUsageMonitor.Claude.Cli.Tests;
@@ -97,6 +99,8 @@ public sealed class ClaudeCliActiveSourceTests
 
         Assert.Equal(UsageAvailability.Setup, observation.Availability);
         Assert.Equal("CLAUDE_TRUST_REQUIRED", observation.Reason);
+        var store = new ClaudeUsageStateStore();
+        Assert.Equal(observation.Reason, store.CommitActive(observation, DateTimeOffset.UtcNow).Reason);
     }
 
     [Fact]
@@ -109,6 +113,8 @@ public sealed class ClaudeCliActiveSourceTests
 
         Assert.Equal(UsageAvailability.SignedOut, observation.Availability);
         Assert.Equal("CLAUDE_SIGNED_OUT", observation.Reason);
+        var store = new ClaudeUsageStateStore();
+        Assert.Equal(observation.Reason, store.CommitActive(observation, DateTimeOffset.UtcNow).Reason);
     }
 
     [Fact]
@@ -170,6 +176,25 @@ public sealed class ClaudeCliActiveSourceTests
 
         Assert.Equal(UsageAvailability.Unsupported, observation.Availability);
         Assert.Equal("REQUIRED_FLAG_MISSING", observation.Reason);
+    }
+
+    [Theory]
+    [InlineData("CLI_VERSION_REVALIDATION_REQUIRED", "版が検証済みの版と異なる")]
+    [InlineData("CLI_GROUP_ESCAPE_DETECTED", "子プロセスが監視範囲から外れた")]
+    public async Task CapabilityFailureKeepsReasonThroughStateStoreAndConnectionMessage(string reason, string expected)
+    {
+        ClaudeCliActiveSource source = CreateSource(
+            probeCapabilities: (_, _, _) => Task.FromResult(new ClaudeCliCapabilities(false, null, reason)));
+
+        ClaudeUsageObservation observation = await source.RefreshAsync(CancellationToken.None);
+        var store = new ClaudeUsageStateStore();
+        UsageSnapshot snapshot = store.CommitActive(observation, DateTimeOffset.UtcNow);
+
+        Assert.Equal(ClaudeUsageSourceKind.CliScreen, observation.Source);
+        Assert.Equal(UsageAvailability.Unsupported, snapshot.Availability);
+        Assert.Equal(reason, snapshot.Reason);
+        Assert.Empty(snapshot.Windows);
+        Assert.Contains(expected, UsageStatusFormatter.FormatClaudeConnection(snapshot));
     }
 
     [Fact]

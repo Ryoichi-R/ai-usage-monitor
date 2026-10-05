@@ -74,7 +74,7 @@ macOS版の仕組みは[ADR 009](../adr/009-macos-widget-layer-control.md)と[AD
 - **初回起動で「開けません」と表示される**: 自分で作った`.app`は通常そのまま開けます。別の場所から複製した場合は、Finderで右クリック→「開く」で許可してください。notarizationは行っていません。
 - **メニューバーのアイコンが出ない**: macOS 27ではAvaloniaの既知の問題（メニューバーが消える、AvaloniaUI/Avalonia#22285）を追跡中です。メニューバーの項目が多い場合は、表示しきれずに隠れていないかも確認してください。
 - **`widget-layer-degraded`が診断ログに出る**: 常に手前・最背面・クリック透過の設定がwindowへ反映されていません。設定を切り替え直し、改善しない場合はmacOSとAvaloniaの版を記録して報告してください。
-- `CLI_VERSION_REVALIDATION_REQUIRED`: `~/.local/bin/claude`が検証済みでない版を指しています。active取得は再検証が済むまで止まり、statusLine受信は続きます。信頼確認などでCLIを手動起動する場合は、「Claude Code連携…」が提示するとおり`DISABLE_AUTOUPDATER=1`を付けてください。
+- `CLI_VERSION_REVALIDATION_REQUIRED`: `~/.local/bin/claude`が検証済みでない版を指しています。現在の検証済み版は2.1.285です。active取得は再検証が済むまで止まり、statusLine受信は続きます。信頼確認などでCLIを手動起動する場合は、「Claude Code連携…」が提示するとおり`DISABLE_AUTOUPDATER=1`を付けてください。
 - `CLI_GROUP_ESCAPE_DETECTED`: 監視アプリが起動したCLIの子プロセスが監視範囲から外れました。該当processは終了済みで、その版のactive取得を`~/Library/Application Support/AiUsageMonitor/claude-active-quarantine`で止めています。fileは削除せず、再検証を依頼してください。
 - `PROCESS_CLEANUP_FAILED`: CLIの終了後、子プロセスの消滅を確認できませんでした。projectの`scripts/check-macos-residual-processes.py`で残留を確認してください。残っていても、次回起動時にPIDと起動時刻が一致するprocessだけを回収します。
 - `MANAGED_SETTINGS_PRESENT`: managed settings（組織の管理設定）があるため、CLIを起動しません。Windowsでも同じ理由コードになります（ADR 003追記）。

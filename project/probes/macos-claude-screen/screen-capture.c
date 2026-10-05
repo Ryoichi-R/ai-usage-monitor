@@ -188,6 +188,18 @@ static void vt_dec_mode(vt_t *vt, bool set)
 static void vt_csi(vt_t *vt, char final)
 {
     char key[40];
+    // Keep exact numeric CSI parameters for replay through the production VT model.
+    // Payload text is never recorded; reject unexpected parameter bytes instead.
+    bool safe_parameters = vt->params_length <= 24;
+    for (size_t index = 0; index < vt->params_length; index++) {
+        char value = vt->params[index];
+        if (!((value >= '0' && value <= '9') || value == ';' || value == ':')) safe_parameters = false;
+    }
+    if (safe_parameters) {
+        char marker[2] = { vt->private_marker, 0 }, intermediate[2] = { vt->intermediate, 0 };
+        (void)snprintf(key, sizeof(key), "CSI_RAW %s%.*s%s%c", marker, (int)vt->params_length, vt->params, intermediate, final);
+        vt_count(vt, key, true);
+    } else vt_count(vt, "CSI_RAW invalid", false);
     int count = vt_param(vt, 0, 1);
     if (count < 1) count = 1;
     if (vt->private_marker == '?' && (final == 'h' || final == 'l')) { vt_dec_mode(vt, final == 'h'); return; }
@@ -706,7 +718,7 @@ static int capture_helper(const char *team_id, const char *binary, const char *c
         (void)snprintf(lang, sizeof(lang), "LANG=%s", capture_lang);
     printf("LOCALE %s\n", lang + 5);
     char *envp[] = { home, user, logname, tmpdir, "PATH=/usr/bin:/bin:/usr/sbin:/sbin", lang,
-                     "TERM=xterm-256color", tracker.token, NULL };
+                     "TERM=xterm-256color", "DISABLE_AUTOUPDATER=1", tracker.token, NULL };
     char *child_argv[64];
     int child_argc = 0;
     child_argv[child_argc++] = (char *)binary;

@@ -4,6 +4,19 @@ namespace AiUsageMonitor.Claude.Mac.Tests;
 
 public sealed class VtScreenTests
 {
+    [Fact]
+    public void RevalidatedCli285ExactCsiParametersAreAccepted()
+    {
+        // 2026-10-06の実CLI 2.1.285 /usage経路10回で観測した、引数を含むCSI全23種。
+        string[] sequences = ["10G", "19A", "19B", "1A", "20A", "20B", "29G", "2G", "2K", "<u", ">0q", ">4m", "?1004h", "?1004l", "?2004h", "?2004l", "?2031h", "?2031l", "?25h", "?u", "G", "c", "r"];
+        foreach (string sequence in sequences)
+        {
+            var screen = new VtScreen();
+            screen.Feed(Encoding.UTF8.GetBytes("\u001b[" + sequence + "ok"));
+            Assert.True(screen.Complete, screen.RejectedCategory);
+        }
+    }
+
     [Theory]
     [InlineData("hello\rX", "Xello")]
     [InlineData("hello\u001b[1G\u001b[Knew", "new")]

@@ -5,7 +5,7 @@ namespace AiUsageMonitor.Claude.Mac;
 
 public sealed class ClaudeLaunchPolicy(string home, string systemLibrary = "/Library")
 {
-    public const string VerifiedVersion = "2.1.274";
+    public const string VerifiedVersion = "2.1.285";
     internal static readonly string[] IsolationArguments =
         ["--setting-sources", "", "--tools", "", "--no-chrome", "--strict-mcp-config", "--safe-mode", "--ax-screen-reader"];
 
