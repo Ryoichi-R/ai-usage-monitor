@@ -1,4 +1,5 @@
 using System.Globalization;
+using AiUsageMonitor.Core.Build;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
@@ -22,6 +23,19 @@ public partial class SettingsWindow : Window
     private const int AppearanceTabIndex = 2;
     private const int CodexTabIndex = 3;
 
+    private void CopyBuildInfo(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            System.Windows.Clipboard.SetText(ProductBuildInfo.Current.ToDisplayText());
+            BuildInfoCopyStatus.Text = "情報をコピーしました。";
+        }
+        catch (System.Runtime.InteropServices.ExternalException)
+        {
+            BuildInfoCopyStatus.Text = "コピーできませんでした。もう一度お試しください。";
+        }
+    }
+
     private readonly Func<AppSettings> _captureCurrentPosition;
     private readonly Func<UsageSnapshot>? _claudeStatusProvider;
     private readonly Func<string?>? _claudeSourceProvider;
@@ -42,6 +56,7 @@ public partial class SettingsWindow : Window
         Func<ClaudeRuntimeHealth>? claudeHealthProvider = null)
     {
         InitializeComponent();
+        BuildInfoFields.ItemsSource = ProductBuildInfo.Current.GetDisplayFields();
         _settings = settings;
         _placementMode = settings.PlacementMode;
         _captureCurrentPosition = captureCurrentPosition;

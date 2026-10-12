@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
+using AiUsageMonitor.Core.Build;
 using AiUsageMonitor.App.UI.Runtime;
 using AiUsageMonitor.App.UI.Settings;
 using AiUsageMonitor.Claude.Configuration;
@@ -29,6 +30,7 @@ public partial class SettingsWindow : Window
     internal const int PlacementTabIndex = 1;
     internal const int AppearanceTabIndex = 2;
     internal const int CodexTabIndex = 3;
+    internal const int VersionTabIndex = 5;
 
     private readonly Func<AppSettings> _captureCurrentPosition;
     private readonly Func<UsageSnapshot>? _claudeStatusProvider;
@@ -58,6 +60,7 @@ public partial class SettingsWindow : Window
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(captureCurrentPosition);
         InitializeComponent();
+        BuildInfoFields.ItemsSource = ProductBuildInfo.Current.GetDisplayFields();
         _settings = settings;
         _placementMode = settings.PlacementMode;
         _captureCurrentPosition = captureCurrentPosition;
@@ -292,6 +295,27 @@ public partial class SettingsWindow : Window
         ShowClaudeBox.IsChecked = true;
         ClaudeSetupRequested?.Invoke();
     }
+
+    internal async Task CopyBuildInfoAsync()
+    {
+        IClipboard? clipboard = GetTopLevel(this)?.Clipboard;
+        if (clipboard is null)
+        {
+            BuildInfoCopyStatus.Text = "クリップボードを利用できません。";
+            return;
+        }
+        try
+        {
+            await clipboard.SetTextAsync(ProductBuildInfo.Current.ToDisplayText());
+            BuildInfoCopyStatus.Text = "情報をコピーしました。";
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.Runtime.InteropServices.ExternalException)
+        {
+            BuildInfoCopyStatus.Text = "コピーできませんでした。もう一度お試しください。";
+        }
+    }
+
+    private async void OnCopyBuildInfoClick(object? sender, RoutedEventArgs e) => await CopyBuildInfoAsync();
 
     internal async Task CopyClaudeExampleAsync()
     {

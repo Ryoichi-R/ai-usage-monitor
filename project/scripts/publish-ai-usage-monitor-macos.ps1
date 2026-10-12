@@ -19,10 +19,13 @@ $macos = Join-Path $contents 'MacOS'
 $resources = Join-Path $contents 'Resources'
 New-Item -ItemType Directory -Path $macos, $resources | Out-Null
 $project = Join-Path $root 'src/AiUsageMonitor.App.Mac/AiUsageMonitor.App.Mac.csproj'
-& dotnet publish $project -c Release -r osx-arm64 --self-contained true -o $macos --nologo
+& dotnet publish $project -c Release -r osx-arm64 --self-contained true -o $macos --nologo -p:DebugType=None -p:DebugSymbols=false
 if ($LASTEXITCODE -ne 0) { throw 'PUBLISH_FAILED' }
-& dotnet publish (Join-Path $root 'src/AiUsageMonitor.Claude.Bridge.Mac/AiUsageMonitor.Claude.Bridge.Mac.csproj') -c Release -r osx-arm64 --self-contained true -o $macos --nologo
+& dotnet publish (Join-Path $root 'src/AiUsageMonitor.Claude.Bridge.Mac/AiUsageMonitor.Claude.Bridge.Mac.csproj') -c Release -r osx-arm64 --self-contained true -o $macos --nologo -p:DebugType=None -p:DebugSymbols=false
 if ($LASTEXITCODE -ne 0) { throw 'BRIDGE_PUBLISH_FAILED' }
+$buildInfo = Get-Content -LiteralPath (Join-Path $macos 'build-info.json') -Raw | ConvertFrom-Json
+$productVersion = [string]$buildInfo.Version
+if ($productVersion -notmatch '^\d+\.\d+\.\d+$') { throw 'INVALID_PRODUCT_VERSION' }
 $executable = Join-Path $macos 'AiUsageMonitor.App.Mac'
 $helper = Join-Path $macos 'ai-usage-process-supervisor'
 foreach ($binary in @($executable, $helper, (Join-Path $macos 'ai-usage-claude-statusline'))) {
@@ -45,7 +48,7 @@ foreach ($size in @(16, 32, 128, 256, 512)) {
 }
 & /usr/bin/iconutil -c icns $iconset -o (Join-Path $resources 'AppIcon.icns')
 if ($LASTEXITCODE -ne 0) { throw 'ICNS_FAILED' }
-@'
+@"
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -53,12 +56,13 @@ if ($LASTEXITCODE -ne 0) { throw 'ICNS_FAILED' }
 <key>CFBundleName</key><string>AI Usage Monitor</string>
 <key>CFBundleExecutable</key><string>AiUsageMonitor.App.Mac</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleVersion</key><string>0.1.0</string>
+<key>CFBundleVersion</key><string>$productVersion</string>
+<key>CFBundleShortVersionString</key><string>$productVersion</string>
 <key>CFBundleIconFile</key><string>AppIcon.icns</string>
 <key>LSUIElement</key><true/>
 <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
-'@ | Set-Content -LiteralPath (Join-Path $contents 'Info.plist') -Encoding utf8NoBOM
+"@ | Set-Content -LiteralPath (Join-Path $contents 'Info.plist') -Encoding utf8NoBOM
 foreach ($document in @('LICENSE', 'THIRD-PARTY-NOTICES.md', 'README.md')) {
     Copy-Item -LiteralPath (Join-Path $root $document) -Destination $resources
 }
@@ -84,6 +88,6 @@ if ($LASTEXITCODE -ne 0) { throw 'SIGNATURE_VERIFY_FAILED' }
 $files = @(Get-ChildItem -LiteralPath $app -File -Recurse | Sort-Object FullName | ForEach-Object {
     [ordered]@{ path = [IO.Path]::GetRelativePath($app, $_.FullName); sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash }
 })
-[ordered]@{ schema_version = '1.0'; runtime = 'osx-arm64'; signature = 'ad-hoc'; acceptance = 'NOT_ACCEPTED'; files = $files } |
+[ordered]@{ schema_version = '1.0'; product_version = $productVersion; build_info = $buildInfo; runtime = 'osx-arm64'; signature = 'ad-hoc'; acceptance = 'NOT_ACCEPTED'; files = $files } |
     ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $destination 'bundle-manifest.json') -Encoding utf8NoBOM
 Write-Host "Local bundle verified: $app"

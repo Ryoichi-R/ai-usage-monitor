@@ -18,6 +18,8 @@ try {
     $env:AI_USAGE_MONITOR_TEST_ARTIFACTS_ROOT = $artifacts
     & (Join-Path $PSScriptRoot 'test-build-contract.ps1') -FixtureRoot (Join-Path $output 'fixtures')
     if ($LASTEXITCODE -ne 0) { throw 'BUILD_CONTRACT_FAILED' }
+    & (Join-Path $PSScriptRoot 'test-version-info-contract.ps1') -FixtureRoot (Join-Path $output 'version-fixtures')
+    if ($LASTEXITCODE -ne 0) { throw 'VERSION_CONTRACT_FAILED' }
     & dotnet restore $solution --nologo --artifacts-path $artifacts $isolation
     if ($LASTEXITCODE -ne 0) { throw 'RESTORE_FAILED' }
     & dotnet build $solution -c Release --no-restore --nologo --artifacts-path $artifacts $isolation

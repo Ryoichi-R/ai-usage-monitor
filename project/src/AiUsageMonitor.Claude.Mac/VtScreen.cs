@@ -116,7 +116,9 @@ internal sealed class VtScreen(int width = 400, int height = 120)
     private void FinishOsc()
     {
         string text = _sequence.ToString();
-        if (!text.StartsWith("0;", StringComparison.Ordinal) && !text.StartsWith("133;", StringComparison.Ordinal)) Reject("osc:" + OscKind(text));
+        // CLI 2.1.296は起動時にProgram Status Protocolの対応を問い合わせる（OSC 7501 ; ?）。応答しなければ以後は送らないため、
+        // 問い合わせの形だけを受理し、状態通知など他の7501はfail-closedのまま拒否する。
+        if (!text.StartsWith("0;", StringComparison.Ordinal) && !text.StartsWith("133;", StringComparison.Ordinal) && text != "7501;?") Reject("osc:" + OscKind(text));
         _state = 0;
     }
 

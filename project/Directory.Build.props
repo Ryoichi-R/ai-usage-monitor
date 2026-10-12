@@ -9,6 +9,10 @@
     <AnalysisMode>Recommended</AnalysisMode>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <Deterministic>true</Deterministic>
-    <Version>0.1.0</Version>
+    <!-- Product version belongs to this app, shared by every OS / architecture. -->
+    <Version>0.2.0</Version>
+    <Product>AI Usage Monitor</Product>
+    <InformationalVersion>$(Version)</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 </Project>

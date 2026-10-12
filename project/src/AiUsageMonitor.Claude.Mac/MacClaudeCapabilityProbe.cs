@@ -63,6 +63,6 @@ public sealed partial class MacClaudeCapabilityProbe(
         return text.ToString();
     }
 
-    [GeneratedRegex(@"^2\.1\.285(?:\s+\(Claude Code\))?$")]
+    [GeneratedRegex(@"^2\.1\.296(?:\s+\(Claude Code\))?$")]
     private static partial Regex VersionPattern();
 }

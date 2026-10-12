@@ -385,6 +385,26 @@
           </StackPanel>
         </ScrollViewer>
       </TabItem>
+      <TabItem Header="バージョン情報">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel Margin="16">
+            <TextBlock Text="バージョン情報" FontSize="18" FontWeight="SemiBold" Margin="0,0,0,12" />
+            <ItemsControl x:Name="BuildInfoFields">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <StackPanel Margin="4,0,4,10">
+                    <TextBlock Text="{Binding Key}" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding Value}" TextWrapping="Wrap" Margin="0,3,0,0" />
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Button x:Name="CopyBuildInfoButton" Content="情報をコピー" HorizontalAlignment="Left"
+                    Padding="12,5" Margin="4,4" Click="CopyBuildInfo" />
+            <TextBlock x:Name="BuildInfoCopyStatus" Margin="4" TextWrapping="Wrap" />
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
     </TabControl>
   </DockPanel>
 </Window>

@@ -1,4 +1,5 @@
 using System.Globalization;
+using AiUsageMonitor.Core.Build;
 using AiUsageMonitor.App.UI.Runtime;
 using AiUsageMonitor.App.UI.Settings;
 using AiUsageMonitor.App.UI.Views;
@@ -7,7 +8,9 @@ using AiUsageMonitor.Core.Settings;
 using AiUsageMonitor.Core.Usage;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input.Platform;
 using Avalonia.Media;
 using static AiUsageMonitor.App.UI.Tests.MainWindowTestSupport;
 using PlacementMode = AiUsageMonitor.Core.Settings.PlacementMode;
@@ -50,7 +53,7 @@ public sealed class SettingsWindowTests
                 .Select(item => Assert.IsType<string>(item.Header))
                 .ToArray();
 
-            Assert.Equal(["全体設定", "表示位置", "外観", "CODEX", "CLAUDE CODE"], headers);
+            Assert.Equal(["全体設定", "表示位置", "外観", "CODEX", "CLAUDE CODE", "バージョン情報"], headers);
             Assert.True(window.CanResize);
             Assert.False(window.ShowInTaskbar);
             Assert.True(window.SaveButton.IsDefault);
@@ -517,6 +520,55 @@ public sealed class SettingsWindowTests
 
             window.Save();
             Assert.Equal("stable-2", window.Result.MonitorStableId);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task VersionTabDisplaysEmbeddedInformationAndCopiesSameText()
+    {
+        SettingsWindow window = CreateWindow();
+        window.Width = window.MinWidth;
+        window.Height = window.MinHeight;
+        window.Show();
+        try
+        {
+            window.CategoryTabs.SelectedIndex = SettingsWindow.VersionTabIndex;
+            Settle(window);
+            var fields = window.BuildInfoFields.Items.OfType<KeyValuePair<string, string>>().ToArray();
+            Assert.Equal(ProductBuildInfo.Current.GetDisplayFields(), fields);
+            Assert.Equal("情報をコピー", window.CopyBuildInfoButton.Content);
+            Assert.True(BoundsIn(window.CopyBuildInfoButton, window).Width > 0);
+            await window.CopyBuildInfoAsync();
+            Assert.Equal("情報をコピーしました。", window.BuildInfoCopyStatus.Text);
+            Assert.Equal(ProductBuildInfo.Current.ToDisplayText(), await window.Clipboard!.TryGetTextAsync());
+            Assert.False(window.Saved);
+            string? screenshotPath = Environment.GetEnvironmentVariable("AI_USAGE_VERSION_SCREENSHOT");
+            if (!string.IsNullOrWhiteSpace(screenshotPath))
+            {
+                using var frame = window.CaptureRenderedFrame();
+                Assert.NotNull(frame);
+                frame.Save(screenshotPath, Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+            }
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task VersionCanBeCopiedBeforeWindowOpensWithoutSavingSettings()
+    {
+        SettingsWindow window = CreateWindow();
+        try
+        {
+            await window.CopyBuildInfoAsync();
+            Assert.Equal("情報をコピーしました。", window.BuildInfoCopyStatus.Text);
+            Assert.False(window.Saved);
         }
         finally
         {

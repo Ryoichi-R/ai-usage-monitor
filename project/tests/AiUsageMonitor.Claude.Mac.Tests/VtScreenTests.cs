@@ -5,10 +5,11 @@ namespace AiUsageMonitor.Claude.Mac.Tests;
 public sealed class VtScreenTests
 {
     [Fact]
-    public void RevalidatedCli285ExactCsiParametersAreAccepted()
+    public void RevalidatedCliExactCsiParametersAreAccepted()
     {
-        // 2026-10-06の実CLI 2.1.285 /usage経路10回で観測した、引数を含むCSI全23種。
-        string[] sequences = ["10G", "19A", "19B", "1A", "20A", "20B", "29G", "2G", "2K", "<u", ">0q", ">4m", "?1004h", "?1004l", "?2004h", "?2004l", "?2031h", "?2031l", "?25h", "?u", "G", "c", "r"];
+        // 2026-10-06の実CLI 2.1.285と2026-10-12の2.1.296の/usage経路各10回で観測した、引数を含むCSI全27種
+        // （2.1.296で17A/17B/21A/21Bが加わり、19A/19Bは出なくなった。旧版の形も残す）。
+        string[] sequences = ["10G", "17A", "17B", "19A", "19B", "1A", "20A", "20B", "21A", "21B", "29G", "2G", "2K", "<u", ">0q", ">4m", "?1004h", "?1004l", "?2004h", "?2004l", "?2031h", "?2031l", "?25h", "?u", "G", "c", "r"];
         foreach (string sequence in sequences)
         {
             var screen = new VtScreen();
@@ -26,6 +27,8 @@ public sealed class VtScreenTests
     // CLI 2.1.274は起動時にXTVERSIONを明示引数付き（CSI > 0 q）で問い合わせる（2026-09-27実機の診断ログ）。
     [InlineData("\u001b[>0q\u001b[c\u001b[>q[Screen Reader Mode: on via flag]", "[Screen Reader Mode: on via flag]")]
     // PoCが描画に影響しないと分類した問い合わせ・設定の各形（kitty keyboardのpush/pop/set、DA2、DECSCUSR、同期出力等）。
+    // CLI 2.1.296が起動時に送るProgram Status Protocolの問い合わせ（OSC 7501 ; ?）。BEL・ST両方の終端を受理する。
+    [InlineData("\u001b]7501;?\a\u001b]7501;?\u001b\\ok", "ok")]
     [InlineData("\u001b[<u\u001b[>1u\u001b[=1;1u\u001b[>c\u001b[>0c\u001b[2 q\u001b[ q\u001b[?2026h\u001b[?1000;1006h\u001b[?12l\u001b[?1lok", "ok")]
     [InlineData("\u001b7one\u001b8X", "Xne")]
     [InlineData("日e\u0301本", "日e\u0301本")]
@@ -76,6 +79,10 @@ public sealed class VtScreenTests
     [InlineData("\u001b[>1;x", "csi:>1;x")]
     [InlineData("\u001b[<1q", "csi:<1q")]
     [InlineData("\u001b]8;url\a", "osc:8")]
+    // 7501は問い合わせの形だけを受理し、状態通知や空payloadは拒否する。
+    [InlineData("\u001b]7501;working\a", "osc:7501")]
+    [InlineData("\u001b]7501;?;x\a", "osc:7501")]
+    [InlineData("\u001b]7501\a", "osc:7501")]
     [InlineData("\t", "c0:0x09")]
     [InlineData("\u001bP", "esc:P")]
     [InlineData("\u001b(0", "charset")]

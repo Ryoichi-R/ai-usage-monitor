@@ -6,7 +6,7 @@
 #include <time.h>
 int main(int argc, char **argv)
 {
-    if (argc == 2 && strcmp(argv[1], "--version") == 0) { puts("2.1.285 (Claude Code)"); return 0; }
+    if (argc == 2 && strcmp(argv[1], "--version") == 0) { puts("2.1.296 (Claude Code)"); return 0; }
     if (argc == 2 && strcmp(argv[1], "--help") == 0) {
         puts("--setting-sources --settings --tools --no-chrome --strict-mcp-config --safe-mode --ax-screen-reader"); return 0;
     }

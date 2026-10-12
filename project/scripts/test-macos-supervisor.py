@@ -10,6 +10,8 @@ import sys
 import tempfile
 import time
 
+CHURN_CHILDREN = 2000
+
 
 def wait_for(predicate, seconds=10):
     end = time.monotonic() + seconds
@@ -25,7 +27,7 @@ def alive(pid):
     return bool(value) and not value.startswith("Z")
 
 
-def fake(root, escape):
+def fake(root, escape, churn=False):
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
     signal.signal(signal.SIGHUP, signal.SIG_IGN)
     child = os.fork()
@@ -35,11 +37,17 @@ def fake(root, escape):
         while True:
             time.sleep(.2)
     (root / "truth.json").write_text(json.dumps([os.getpid(), child]))
+    if churn:
+        # Short-lived children that stay in the group (like `uname` under CLI 2.1.296) can exit
+        # while being registered; that must not be reported as a group escape.
+        for _ in range(CHURN_CHILDREN):
+            os.waitpid(os.posix_spawn("/usr/bin/true", ["true"], {}), 0)
+        (root / "churned").touch()
     while True:
         time.sleep(.2)
 
 
-def owner(helper, root, escape, pty=False):
+def owner(helper, root, escape, pty=False, churn=False):
     journal = root / "journal"
     journal.mkdir(mode=0o700)
     listener = socket.socket(socket.AF_UNIX)
@@ -49,6 +57,8 @@ def owner(helper, root, escape, pty=False):
             str(Path(__file__).resolve()), "--fake", str(root)]
     if escape:
         args.append("--escape")
+    if churn:
+        args.append("--churn")
     process = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     (root / "helper.json").write_text(json.dumps(process.pid))
     control, _ = listener.accept()
@@ -57,6 +67,17 @@ def owner(helper, root, escape, pty=False):
     if escape:
         # The supervisor terminates on its own and reports the escape after cleanup.
         (root / "outcome").write_bytes(control.recv(1))
+    if churn:
+        # Record any early outcome; a contained run must not report one while the CLI is alive.
+        control.settimeout(.2)
+        while True:
+            try:
+                value = control.recv(1)
+            except socket.timeout:
+                continue
+            if value:
+                (root / "outcome").write_bytes(value)
+            return
     while True:
         time.sleep(.2)
 
@@ -75,6 +96,8 @@ def trial(helper, mode, pty=False):
             args.append("--pty")
         if mode == "escape":
             args.append("--escape")
+        if mode == "churn":
+            args.append("--churn")
         app = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         pids = []
         helper_pid = None
@@ -99,6 +122,12 @@ def trial(helper, mode, pty=False):
                 # Supervisor must detect and terminate without owner intervention, then report 'E'.
                 wait_for(lambda: (root / "outcome").exists(), 8)
                 assert (root / "outcome").read_bytes() == b"E", "escape outcome not reported"
+            elif mode == "churn":
+                wait_for(lambda: (root / "churned").exists() or (root / "outcome").exists(), 60)
+                time.sleep(.5)
+                assert not (root / "outcome").exists(), "short-lived child reported as escape"
+                app.kill()
+                app.wait(timeout=2)
             wait_for(lambda: all(not alive(pid) for pid in pids), 8)
             wait_for(lambda: not alive(helper_pid), 3)
             sweep(helper, root / "journal")
@@ -144,14 +173,15 @@ def main():
     parser.add_argument("--fake")
     parser.add_argument("--owner", nargs=2)
     parser.add_argument("--escape", action="store_true")
+    parser.add_argument("--churn", action="store_true")
     parser.add_argument("--pty", action="store_true")
     parser.add_argument("--repeat", type=int, default=2)
     args = parser.parse_args()
     if args.fake:
-        return fake(Path(args.fake), args.escape)
+        return fake(Path(args.fake), args.escape, args.churn)
     if args.owner:
-        return owner(args.owner[0], Path(args.owner[1]), args.escape, args.pty)
-    for mode in ["parent-kill", "helper-kill", "both-kill", "escape"]:
+        return owner(args.owner[0], Path(args.owner[1]), args.escape, args.pty, args.churn)
+    for mode in ["parent-kill", "helper-kill", "both-kill", "escape", "churn"]:
         for _ in range(args.repeat):
             trial(args.helper, mode, args.pty)
         print(mode + ": PASS", flush=True)

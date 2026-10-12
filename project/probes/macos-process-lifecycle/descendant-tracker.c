@@ -220,6 +220,10 @@ static bool tracker_add(tracker_t *tracker, pid_t pid, bool from_orphan_scan)
     item->pgid = value.pgid;
     item->sid = getsid(pid);
     item->alive = true;
+    // getsid fails only with ESRCH. A child that exits between the snapshot and getsid (e.g. the
+    // short-lived `uname` under CLI 2.1.296) is not a session escape: its group was checked while it
+    // was alive. A process that is still alive without a session id stays fail-closed.
+    if (item->sid < 0 && !live(snapshot(pid))) { item->sid = tracker->root_sid; item->alive = false; }
     item->from_orphan_scan = from_orphan_scan;
     memcpy(item->comm, value.comm, sizeof(item->comm));
     struct kevent change;

@@ -57,6 +57,8 @@ $env:AI_USAGE_MONITOR_TEST_ARTIFACTS_ROOT = $testOutput.ArtifactsPath
     $buildContract = Join-Path $PSScriptRoot 'test-build-contract.ps1'
     & $buildContract -FixtureRoot (Join-Path $testOutput.OutputRoot 'build-contract-fixtures')
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    & (Join-Path $PSScriptRoot 'test-version-info-contract.ps1') -FixtureRoot (Join-Path $testOutput.OutputRoot 'version-contract-fixtures')
+    if ($LASTEXITCODE -ne 0) { throw 'Version information build contract failed.' }
     $launcherContract = Join-Path $PSScriptRoot 'test-rebuild-launcher-contract.ps1'
     & $launcherContract
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

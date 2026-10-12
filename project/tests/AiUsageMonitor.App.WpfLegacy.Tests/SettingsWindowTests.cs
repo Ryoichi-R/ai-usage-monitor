@@ -1,3 +1,4 @@
+using AiUsageMonitor.Core.Build;
 using System.Globalization;
 using System.IO;
 using System.Runtime.ExceptionServices;
@@ -42,6 +43,25 @@ public sealed class SettingsWindowTests
     }
 
     [Fact]
+    public void SettingsWindow_VersionInfoMatchesEmbeddedFields()
+    {
+        RunInSta(() =>
+        {
+            var window = CreateWindow();
+            try
+            {
+                Assert.Equal(ProductBuildInfo.Current.GetDisplayFields(),
+                    window.BuildInfoFields.Items.Cast<KeyValuePair<string, string>>());
+                Assert.Equal("情報をコピー", window.CopyBuildInfoButton.Content);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    [Fact]
     public void SettingsWindow_UsesExpectedCategoriesAndResizableShell()
     {
         RunInSta(() =>
@@ -53,7 +73,7 @@ public sealed class SettingsWindowTests
                 .Select(item => Assert.IsType<string>(item.Header))
                 .ToArray();
 
-            Assert.Equal(["全体設定", "表示位置", "外観", "CODEX", "CLAUDE CODE"], headers);
+            Assert.Equal(["全体設定", "表示位置", "外観", "CODEX", "CLAUDE CODE", "バージョン情報"], headers);
             Assert.Equal(ResizeMode.CanResize, window.ResizeMode);
             Assert.False(window.ShowInTaskbar);
             Assert.True(window.SaveButton.IsDefault);

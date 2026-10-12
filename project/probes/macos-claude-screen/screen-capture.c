@@ -43,6 +43,9 @@ typedef struct {
     int state;              // 0 ground, 1 ESC, 2 CSI, 3 OSC, 4 string(DCS/APC/PM/SOS), 5 ESC intermediate, 6 string-ESC, 7 OSC-ESC
     char params[64];
     size_t params_length;
+    char osc_selector[9];   // numeric OSC selector of the current sequence (payload itself is never kept)
+    size_t osc_payload_length;
+    bool osc_payload_query; // payload is exactly "?" (a capability query)
     char private_marker;
     char intermediate;
     uint32_t utf8_code;
@@ -331,7 +334,7 @@ static void vt_feed(vt_t *vt, const unsigned char *data, size_t length)
             break;
         case 1:
             if (byte == '[') { vt->state = 2; vt->params_length = 0; vt->private_marker = 0; vt->intermediate = 0; }
-            else if (byte == ']') { vt->state = 3; vt->params_length = 0; vt->params[0] = '\0'; }
+            else if (byte == ']') { vt->state = 3; vt->params_length = 0; vt->params[0] = '\0'; vt->osc_selector[0] = '\0'; vt->osc_payload_length = 0; vt->osc_payload_query = false; }
             else if (byte == 'P' || byte == '_' || byte == '^' || byte == 'X') { vt->state = 4; vt_count(vt, byte == 'P' ? "DCS" : byte == '_' ? "APC" : "PM/SOS", true); }
             else if (byte == '(' || byte == ')' || byte == '*' || byte == '+' || byte == '#' || byte == '%') vt->state = 5;
             else { vt_esc(vt, byte); vt->state = 0; }
@@ -351,9 +354,23 @@ static void vt_feed(vt_t *vt, const unsigned char *data, size_t length)
                     vt->params[vt->params_length] = '\0';
                     (void)snprintf(key, sizeof(key), "OSC %s", vt->params);
                     vt_count(vt, key, true);
+                    if (byte == ';') { memcpy(vt->osc_selector, vt->params, vt->params_length + 1); vt->osc_payload_length = 0; }
                 }
+                else if (byte == ';' && vt->osc_selector[0] != '\0') vt->osc_payload_length++;
                 vt->params[0] = ';';
                 vt->params_length = 1;
+            }
+            else if (vt->osc_selector[0] != '\0') {
+                // Only the payload shape is kept: exactly "?" is a query, anything else is data.
+                vt->osc_payload_length++;
+                vt->osc_payload_query = vt->osc_payload_length == 1 && byte == '?';
+            }
+            if ((byte == 0x07 || byte == 0x1b) && vt->osc_selector[0] != '\0') {
+                char key[24];
+                bool query = vt->osc_payload_length == 1 && vt->osc_payload_query;
+                (void)snprintf(key, sizeof(key), "OSC %s %s", vt->osc_selector, query ? "query" : "data");
+                vt_count(vt, key, true);
+                vt->osc_selector[0] = '\0';
             }
             if (byte == 0x07) { vt->state = 0; vt->params_length = 0; vt->params[0] = '\0'; }
             else if (byte == 0x1b) vt->state = 7;
