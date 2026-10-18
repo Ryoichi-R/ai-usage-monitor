@@ -1,0 +1,17 @@
+.vs/
+.vscode/
+.idea/
+**/bin/
+**/obj/
+**/TestResults/
+**/coverage/
+**/artifacts/
+/project/.work/
+*.user
+*.suo
+*.log
+settings.json
+settings.json.bak
+.release-staging/
+.release-work/
+.DS_Store

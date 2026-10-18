@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\AiUsageMonitor.Claude.Mac\AiUsageMonitor.Claude.Mac.csproj" />
+  </ItemGroup>
+
+  <ItemGroup><ProjectReference Include="../../src/AiUsageMonitor.Claude.Bridge.Mac/AiUsageMonitor.Claude.Bridge.Mac.csproj" /></ItemGroup>
+  <PropertyGroup><NativeFixtureDirectory>$(BaseIntermediateOutputPath)$(Configuration)/native-fixtures</NativeFixtureDirectory></PropertyGroup>
+  <Target Name="BuildSignedFixtures" BeforeTargets="BeforeBuild" Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+    <MakeDir Directories="$(NativeFixtureDirectory)" />
+    <Exec Command="clang -DAIUSAGE_TEST_SIGNING -framework Security -framework CoreFoundation -std=gnu17 -Wall -Wextra -Werror &quot;$(MSBuildProjectDirectory)/../../src/AiUsageMonitor.Platform.Mac/Native/process-supervisor.c&quot; -o &quot;$(NativeFixtureDirectory)/test-supervisor&quot;" />
+    <Exec Command="clang -Wall -Wextra -Werror &quot;$(MSBuildProjectDirectory)/../support/fake-claude-macos.c&quot; -o &quot;$(NativeFixtureDirectory)/fake-claude-macos&quot;" />
+    <Exec Command="/usr/bin/codesign --force --sign - --identifier org.example.ai-usage-suspended-probe &quot;$(NativeFixtureDirectory)/fake-claude-macos&quot;" />
+  </Target>
+  <ItemGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+    <None Include="$(NativeFixtureDirectory)/test-supervisor" Link="test-supervisor" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$(NativeFixtureDirectory)/fake-claude-macos" Link="fake-claude-macos" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

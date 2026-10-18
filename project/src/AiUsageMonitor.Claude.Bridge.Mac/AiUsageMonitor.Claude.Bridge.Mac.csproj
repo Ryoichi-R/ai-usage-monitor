@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><AssemblyName>ai-usage-claude-statusline</AssemblyName></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../AiUsageMonitor.Claude.Mac/AiUsageMonitor.Claude.Mac.csproj" /></ItemGroup>
+  <Target Name="GetStatusLineBridgeFiles" Returns="@(_StatusLineBridgeFiles)">
+    <ItemGroup><_StatusLineBridgeFiles Include="$(TargetDir)ai-usage-claude-statusline;$(TargetDir)ai-usage-claude-statusline.dll;$(TargetDir)ai-usage-claude-statusline.deps.json;$(TargetDir)ai-usage-claude-statusline.runtimeconfig.json" /></ItemGroup>
+  </Target>
+</Project>

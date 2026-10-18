@@ -1,0 +1,4 @@
+root = true
+
+[src/CodexUsageMonitor.{Core,Codex,Claude,Windows}/**/*.cs]
+dotnet_diagnostic.CA2007.severity = error

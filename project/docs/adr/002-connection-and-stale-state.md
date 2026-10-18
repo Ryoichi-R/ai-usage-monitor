@@ -1,0 +1,10 @@
+# ADR 002: pollingを更新の正本とする
+
+- Status: Accepted
+- Date: 2026-07-22
+
+既定300秒のpollingを更新の正本とする。Codexの各アカウントは設定した間隔に対して独立した±10% jitterを持ち、最初の周期取得だけ設定順に最大10秒staggerする。notificationは早期refreshのbest-effort hintとしてのみ扱い、同一アカウントの取得はsingle-flightとする。
+
+notificationは500ms debounceでまとめ、直近の成功取得から5秒以内はcooldownする。notification起点の取得中に届いたnotificationは破棄する。手動更新またはpolling中に届いたnotificationは、完了後に1件だけtrailing refreshとして実行する。これにより通知stormによる無限再取得を防ぎつつ、権威的な取得と競合した最終通知を取りこぼさない。
+
+成功応答はcomponent replacementとして扱い、欠落componentを過去応答から補完しない。transport失敗時は他アカウントの値へfallbackせず、直近成功時刻だけをstale判定用に保持して使用上限・金額・残高カードを消す。home利用不能、signed-out、schema非対応はアカウント固有の固定error codeで表示する。

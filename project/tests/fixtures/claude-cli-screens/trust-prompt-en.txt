@@ -1,0 +1,23 @@
+────────────────────────────────────────────────────────────────────────────────
+ Accessing workspace:
+
+ C:\example\workspace
+
+ Quick safety check: Is this a project you created or one you trust? (Like your own code, a well-known open source
+ project, or work from your team). If not, take a moment to review what's in this folder first.
+
+ Claude Code'll be able to read, edit, and execute files here.
+
+ ⚠ This folder pre-approves ### tool permissions in .claude/settings.json and .claude/settings.local.json:
+   WebSearch, Bash(ConvertFrom-Json *), Bash(ConvertTo-Json *), Bash(Get-ChildItem *), Bash(Get-Command *),
+ Bash(Get-Item *), Bash(Join-Path *), Bash(mkdir *), and ### more
+ ⚠ This folder adds ## directories to the workspace in .claude/settings.json and .claude/settings.local.json:
+   C:\example\workspace\src, C:\example\workspace\docs
+ These will apply without asking. Only proceed if you trust this configuration.
+
+ Security guide
+
+ ❯ #. Yes, I trust this folder
+   #. No, exit
+
+ Enter to confirm · Esc to cancel

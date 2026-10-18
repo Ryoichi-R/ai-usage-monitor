@@ -1,0 +1,6 @@
+ Select login method
+
+ ❯ #. Claude account with subscription
+   #. Anthropic Console account
+
+ Run /login again if you need to switch accounts.

@@ -1,0 +1,334 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:AiUsageMonitor.App.UI.ViewModels"
+        xmlns:conv="using:AiUsageMonitor.App.UI.Converters"
+        x:Class="AiUsageMonitor.App.UI.Views.MainWindow"
+        x:DataType="vm:UsageViewModel"
+        x:CompileBindings="True"
+        Title="AI Usage Monitor"
+        Width="280"
+        SizeToContent="Height"
+        WindowDecorations="None"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent"
+        ShowInTaskbar="False"
+        CanResize="False"
+        UseLayoutRounding="True">
+  <Window.Resources>
+    <SolidColorBrush x:Key="MutedBrush" Color="#FFB0B0B0"/>
+    <SolidColorBrush x:Key="AccentBrush" Color="#FF7DC8FF"/>
+    <SolidColorBrush x:Key="WarnBrush" Color="#FFFFB74D"/>
+    <SolidColorBrush x:Key="DangerBrush" Color="#FFFF6B6B"/>
+
+    <DataTemplate x:Key="UsageRowTemplate" x:DataType="vm:UsageRowViewModel">
+      <Grid Height="52" Margin="0,0,0,4" RowDefinitions="30,17,5" ColumnDefinitions="30,92,*">
+        <TextBlock x:Name="WindowLabel"
+                   Grid.Column="1"
+                   Text="{Binding Label}"
+                   FontSize="11"
+                   HorizontalAlignment="Left"
+                   VerticalAlignment="Center"
+                   Foreground="{DynamicResource MutedBrush}"/>
+        <StackPanel x:Name="UsageValuePanel"
+                    Grid.Column="1"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Center">
+          <TextBlock x:Name="RemainingLabel"
+                     Text="残り"
+                     Margin="0,5,3,0"
+                     FontSize="10"
+                     VerticalAlignment="Center"
+                     Foreground="{DynamicResource MutedBrush}"/>
+          <TextBlock Classes="severity"
+                     Classes.warning="{Binding Severity, Converter={x:Static conv:SeverityConverters.IsWarning}}"
+                     Classes.danger="{Binding Severity, Converter={x:Static conv:SeverityConverters.IsDanger}}"
+                     Text="{Binding Value}"
+                     FontSize="24"
+                     FontWeight="SemiBold"/>
+          <TextBlock Text="%" FontSize="13" VerticalAlignment="Center" Foreground="{DynamicResource MutedBrush}"/>
+        </StackPanel>
+        <TextBlock x:Name="ResetText"
+                   Grid.Row="1"
+                   Grid.Column="2"
+                   Text="{Binding Secondary}"
+                   FontSize="12"
+                   TextAlignment="Right"
+                   Foreground="{DynamicResource AccentBrush}"/>
+        <Grid x:Name="UsageProgressTrack"
+              Grid.Row="2"
+              Grid.Column="1"
+              Grid.ColumnSpan="2"
+              Background="#22000000">
+          <Rectangle Classes="severity"
+                     Classes.warning="{Binding Severity, Converter={x:Static conv:SeverityConverters.IsWarning}}"
+                     Classes.danger="{Binding Severity, Converter={x:Static conv:SeverityConverters.IsDanger}}"
+                     RenderTransformOrigin="0%,50%"
+                     RenderTransform="{Binding Fraction, Converter={x:Static conv:FractionToScaleTransformConverter.Instance}}"/>
+        </Grid>
+      </Grid>
+    </DataTemplate>
+
+    <DataTemplate x:Key="CompactUsageRowTemplate" x:DataType="vm:UsageRowViewModel">
+      <Grid Height="52" Margin="0,0,0,4" Width="134" RowDefinitions="30,17,5" ColumnDefinitions="Auto,*">
+        <TextBlock x:Name="CompactWindowLabel"
+                   Grid.Column="0"
+                   Text="{Binding Label}"
+                   FontSize="10"
+                   HorizontalAlignment="Left"
+                   VerticalAlignment="Center"
+                   Foreground="{DynamicResource MutedBrush}"/>
+        <StackPanel x:Name="CompactUsageValuePanel"
+                    Grid.Column="1"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Center">
+          <TextBlock Text="残り" Margin="0,3,2,0" FontSize="9"
+                     VerticalAlignment="Center" Foreground="{DynamicResource MutedBrush}"/>
+          <TextBlock Classes="severity"
+                     Classes.warning="{Binding Severity, Converter={x:Static conv:SeverityConverters.IsWarning}}"
+                     Classes.danger="{Binding Severity, Converter={x:Static conv:SeverityConverters.IsDanger}}"
+                     Text="{Binding Value}"
+                     FontSize="22"
+                     FontWeight="SemiBold"/>
+          <TextBlock Text="%" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource MutedBrush}"/>
+        </StackPanel>
+        <TextBlock x:Name="CompactResetText"
+                   Grid.Row="1"
+                   Grid.Column="0"
+                   Grid.ColumnSpan="2"
+                   Text="{Binding Secondary}"
+                   ToolTip.Tip="{Binding Secondary}"
+                   FontSize="10.5"
+                   TextAlignment="Right"
+                   TextTrimming="CharacterEllipsis"
+                   Foreground="{DynamicResource AccentBrush}"/>
+        <Grid x:Name="CompactUsageProgressTrack"
+              Grid.Row="2"
+              Grid.Column="0"
+              Grid.ColumnSpan="2"
+              Background="#22000000">
+          <Rectangle Classes="severity"
+                     Classes.warning="{Binding Severity, Converter={x:Static conv:SeverityConverters.IsWarning}}"
+                     Classes.danger="{Binding Severity, Converter={x:Static conv:SeverityConverters.IsDanger}}"
+                     RenderTransformOrigin="0%,50%"
+                     RenderTransform="{Binding Fraction, Converter={x:Static conv:FractionToScaleTransformConverter.Instance}}"/>
+        </Grid>
+      </Grid>
+    </DataTemplate>
+
+    <DataTemplate x:Key="MonetaryCardTemplate" x:DataType="vm:MonetaryCardViewModel">
+      <Grid Margin="0,4,0,2" ColumnDefinitions="30,92,*">
+        <Border x:Name="MonetaryCard"
+                Grid.Column="1"
+                Padding="2,0"
+                CornerRadius="5"
+                Background="#18000000">
+          <Grid RowDefinitions="Auto,Auto,Auto">
+            <TextBlock x:Name="MonetaryTitle"
+                       Text="{Binding Title}"
+                       FontSize="11"
+                       Foreground="{DynamicResource MutedBrush}"/>
+            <TextBlock x:Name="MonetaryValue"
+                       Grid.Row="1"
+                       Text="{Binding Value}"
+                       FontSize="17"
+                       FontWeight="SemiBold"
+                       TextAlignment="Right"
+                       TextTrimming="CharacterEllipsis"
+                       Foreground="{DynamicResource AccentBrush}"/>
+            <TextBlock x:Name="MonetarySecondary"
+                       Grid.Row="2"
+                       Text="{Binding Secondary}"
+                       FontSize="11"
+                       TextAlignment="Right"
+                       TextWrapping="Wrap"
+                       Foreground="{DynamicResource MutedBrush}"/>
+          </Grid>
+        </Border>
+      </Grid>
+    </DataTemplate>
+  </Window.Resources>
+
+  <Window.Styles>
+    <Style Selector="TextBlock.severity">
+      <Setter Property="Foreground" Value="{DynamicResource AccentBrush}"/>
+    </Style>
+    <Style Selector="TextBlock.severity.warning">
+      <Setter Property="Foreground" Value="{DynamicResource WarnBrush}"/>
+    </Style>
+    <Style Selector="TextBlock.severity.danger">
+      <Setter Property="Foreground" Value="{DynamicResource DangerBrush}"/>
+    </Style>
+    <Style Selector="Rectangle.severity">
+      <Setter Property="Fill" Value="{DynamicResource AccentBrush}"/>
+    </Style>
+    <Style Selector="Rectangle.severity.warning">
+      <Setter Property="Fill" Value="{DynamicResource WarnBrush}"/>
+    </Style>
+    <Style Selector="Rectangle.severity.danger">
+      <Setter Property="Fill" Value="{DynamicResource DangerBrush}"/>
+    </Style>
+    <Style Selector="TextBlock.freshness">
+      <Setter Property="Foreground" Value="{DynamicResource MutedBrush}"/>
+      <Setter Property="FontFeatures" Value="+tnum"/>
+      <Setter Property="TextAlignment" Value="Right"/>
+      <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+    </Style>
+    <Style Selector="TextBlock.freshness.warning">
+      <Setter Property="Foreground" Value="{DynamicResource WarnBrush}"/>
+    </Style>
+    <Style Selector="TextBlock.freshness.danger">
+      <Setter Property="Foreground" Value="{DynamicResource DangerBrush}"/>
+    </Style>
+  </Window.Styles>
+
+  <Grid x:Name="AppearanceHost" Background="Transparent">
+    <Border x:Name="BackgroundFadeHost"
+            Background="Transparent"
+            IsHitTestVisible="False"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch">
+      <Border x:Name="BackgroundSurface"
+              Background="Transparent"
+              IsHitTestVisible="False"/>
+    </Border>
+    <LayoutTransformControl x:Name="RootScale"
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center">
+      <Border x:Name="Root"
+              Width="280"
+              MaxHeight="700"
+              Padding="10"
+              Background="Transparent">
+        <Grid x:Name="RootContentGrid" RowDefinitions="*,Auto">
+          <ScrollViewer x:Name="ContentScrollViewer"
+                        Grid.Row="0"
+                        VerticalScrollBarVisibility="Auto"
+                        HorizontalScrollBarVisibility="Disabled">
+            <StackPanel>
+              <StackPanel x:Name="StandardContentPanel">
+                <TextBlock x:Name="CodexHeader" Text="CODEX" Height="0" Opacity="0"/>
+                <ItemsControl x:Name="CodexAccountsControl" ItemsSource="{Binding CodexAccounts}" IsVisible="{Binding ShowCodex}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:CodexAccountViewModel">
+                      <StackPanel IsVisible="{Binding IsVisible}" Margin="0,0,0,8">
+                        <Grid Width="260" HorizontalAlignment="Left" ClipToBounds="True" ColumnDefinitions="122,138">
+                          <TextBlock Text="{Binding DisplayName}" ToolTip.Tip="{Binding DisplayName}" TextTrimming="CharacterEllipsis"
+                                     FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource MutedBrush}"/>
+                          <TextBlock Grid.Column="1"
+                                     Classes="freshness"
+                                     Classes.warning="{Binding Usage.FreshnessSeverity, Converter={x:Static conv:SeverityConverters.IsWarning}}"
+                                     Classes.danger="{Binding Usage.FreshnessSeverity, Converter={x:Static conv:SeverityConverters.IsDanger}}"
+                                     Text="{Binding Usage.FreshnessText}"
+                                     IsVisible="{Binding Usage.IsFreshnessVisible}"
+                                     ToolTip.Tip="{Binding Usage.FreshnessToolTip}"
+                                     MaxWidth="138"
+                                     FontSize="11"/>
+                        </Grid>
+                        <ItemsControl ItemsSource="{Binding Usage.Rows}" ItemTemplate="{StaticResource UsageRowTemplate}"/>
+                        <ContentControl Content="{Binding Usage.AdditionalUsage}"
+                                        ContentTemplate="{StaticResource MonetaryCardTemplate}"
+                                        IsVisible="{Binding Usage.AdditionalUsage.IsVisible}"/>
+                        <ContentControl Content="{Binding Usage.CreditBalance}"
+                                        ContentTemplate="{StaticResource MonetaryCardTemplate}"
+                                        IsVisible="{Binding Usage.CreditBalance.IsVisible}"/>
+                        <TextBlock Text="{Binding Usage.StatusText}" IsVisible="{Binding Usage.IsStatusVisible}"
+                                   FontSize="12" TextAlignment="Right" Foreground="{DynamicResource MutedBrush}"/>
+                      </StackPanel>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <StackPanel IsVisible="{Binding ShowClaude}" Margin="0,8,0,0">
+                  <Grid Width="260" HorizontalAlignment="Left" ClipToBounds="True" ColumnDefinitions="122,138">
+                    <TextBlock Text="CLAUDE" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource MutedBrush}"/>
+                    <TextBlock Grid.Column="1"
+                               Classes="freshness"
+                               Classes.warning="{Binding Claude.FreshnessSeverity, Converter={x:Static conv:SeverityConverters.IsWarning}}"
+                               Classes.danger="{Binding Claude.FreshnessSeverity, Converter={x:Static conv:SeverityConverters.IsDanger}}"
+                               Text="{Binding Claude.FreshnessText}"
+                               IsVisible="{Binding Claude.IsFreshnessVisible}"
+                               ToolTip.Tip="{Binding Claude.FreshnessToolTip}"
+                               MaxWidth="138"
+                               FontSize="11"/>
+                  </Grid>
+                  <ItemsControl ItemsSource="{Binding Claude.Rows}" ItemTemplate="{StaticResource UsageRowTemplate}"/>
+                  <TextBlock Text="{Binding Claude.StatusText}" IsVisible="{Binding Claude.IsStatusVisible}"
+                             FontSize="12" TextAlignment="Right" Foreground="{DynamicResource MutedBrush}"/>
+                </StackPanel>
+              </StackPanel>
+
+              <StackPanel x:Name="CompactContentPanel" IsVisible="False">
+                <ItemsControl ItemsSource="{Binding CodexAccounts}" IsVisible="{Binding ShowCodex}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:CodexAccountViewModel">
+                      <StackPanel IsVisible="{Binding IsVisible}" Margin="0,0,0,8">
+                        <Grid Width="134" HorizontalAlignment="Left" ClipToBounds="True" ColumnDefinitions="58,*">
+                          <TextBlock Text="{Binding DisplayName}"
+                                     ToolTip.Tip="{Binding DisplayName}"
+                                     AutomationProperties.Name="{Binding DisplayName}"
+                                     TextTrimming="CharacterEllipsis"
+                                     FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource MutedBrush}"/>
+                          <TextBlock Grid.Column="1"
+                                     Classes="freshness"
+                                     Classes.warning="{Binding Usage.FreshnessSeverity, Converter={x:Static conv:SeverityConverters.IsWarning}}"
+                                     Classes.danger="{Binding Usage.FreshnessSeverity, Converter={x:Static conv:SeverityConverters.IsDanger}}"
+                                     Text="{Binding Usage.FreshnessText}"
+                                     IsVisible="{Binding Usage.IsFreshnessVisible}"
+                                     ToolTip.Tip="{Binding Usage.FreshnessCompactToolTip}"
+                                     AutomationProperties.Name="{Binding Usage.FreshnessText}"
+                                     MaxWidth="76"
+                                     FontSize="10.5"/>
+                        </Grid>
+                        <ItemsControl ItemsSource="{Binding Usage.Rows}" ItemTemplate="{StaticResource CompactUsageRowTemplate}"/>
+                        <TextBlock Text="{Binding Usage.StatusText}"
+                                   IsVisible="{Binding Usage.IsCompactStatusVisible}"
+                                   Width="134"
+                                   FontSize="10.5"
+                                   TextAlignment="Right"
+                                   TextWrapping="Wrap"
+                                   Foreground="{DynamicResource MutedBrush}"/>
+                      </StackPanel>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <StackPanel IsVisible="{Binding ShowClaude}" Margin="0,8,0,0">
+                  <Grid Width="134" HorizontalAlignment="Left" ClipToBounds="True" ColumnDefinitions="58,*">
+                    <TextBlock Text="CLAUDE" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource MutedBrush}"/>
+                    <TextBlock Grid.Column="1"
+                               Classes="freshness"
+                               Classes.warning="{Binding Claude.FreshnessSeverity, Converter={x:Static conv:SeverityConverters.IsWarning}}"
+                               Classes.danger="{Binding Claude.FreshnessSeverity, Converter={x:Static conv:SeverityConverters.IsDanger}}"
+                               Text="{Binding Claude.FreshnessText}"
+                               IsVisible="{Binding Claude.IsFreshnessVisible}"
+                               ToolTip.Tip="{Binding Claude.FreshnessCompactToolTip}"
+                               AutomationProperties.Name="{Binding Claude.FreshnessText}"
+                               MaxWidth="76"
+                               FontSize="10.5"/>
+                  </Grid>
+                  <ItemsControl ItemsSource="{Binding Claude.Rows}" ItemTemplate="{StaticResource CompactUsageRowTemplate}"/>
+                  <TextBlock Text="{Binding Claude.StatusText}"
+                             IsVisible="{Binding Claude.IsCompactStatusVisible}"
+                             Width="134"
+                             FontSize="10.5"
+                             TextAlignment="Right"
+                             TextWrapping="Wrap"
+                             Foreground="{DynamicResource MutedBrush}"/>
+                </StackPanel>
+              </StackPanel>
+            </StackPanel>
+          </ScrollViewer>
+          <TextBlock x:Name="ScrollGuidanceText"
+                     Grid.Row="1"
+                     Text="スクロールするにはクリック透過を解除してください"
+                     IsVisible="False"
+                     Margin="0,6,0,0"
+                     FontSize="11"
+                     TextAlignment="Right"
+                     TextWrapping="Wrap"
+                     Foreground="{DynamicResource MutedBrush}"/>
+        </Grid>
+      </Border>
+    </LayoutTransformControl>
+  </Grid>
+</Window>

@@ -1,0 +1,52 @@
+<Project>
+  <!--
+    D14: Avalonia's build-time telemetry (Avalonia.BuildServices) runs only while
+    UsedAvaloniaProducts is non-empty. Avalonia.props appends to it early in evaluation;
+    Directory.Build.targets is imported after all package props, so clearing it here disables
+    the telemetry task for every build without relying on AVALONIA_TELEMETRY_OPTOUT.
+  -->
+  <PropertyGroup>
+    <UsedAvaloniaProducts></UsedAvaloniaProducts>
+  </PropertyGroup>
+  <!-- Only the shared Core assembly owns this snapshot. Hosts never query Git at runtime. -->
+  <Target Name="GenerateProductBuildInfo" BeforeTargets="AssignTargetPaths"
+          Condition="'$(MSBuildProjectName)' == 'AiUsageMonitor.Core' and '$(DesignTimeBuild)' != 'true'">
+    <PropertyGroup>
+      <_BuildSource>不明</_BuildSource>
+      <_BuildDirty>null</_BuildDirty>
+      <_BuildUtc>$([System.DateTime]::UtcNow.ToString('O'))</_BuildUtc>
+      <_BuildInfoFile>$(IntermediateOutputPath)build-info.json</_BuildInfoFile>
+    </PropertyGroup>
+    <Exec Command="git -C &quot;$(MSBuildThisFileDirectory)..&quot; rev-parse --short=12 HEAD"
+          ConsoleToMSBuild="true" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true"
+          StandardOutputImportance="Low" StandardErrorImportance="Low" EchoOff="true">
+      <Output TaskParameter="ConsoleOutput" ItemName="_BuildGitSource" />
+      <Output TaskParameter="ExitCode" PropertyName="_BuildGitSourceExitCode" />
+    </Exec>
+    <Exec Command="git -C &quot;$(MSBuildThisFileDirectory)..&quot; status --porcelain --untracked-files=normal"
+          ConsoleToMSBuild="true" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true"
+          StandardOutputImportance="Low" StandardErrorImportance="Low" EchoOff="true">
+      <Output TaskParameter="ConsoleOutput" ItemName="_BuildGitStatus" />
+      <Output TaskParameter="ExitCode" PropertyName="_BuildGitStatusExitCode" />
+    </Exec>
+    <PropertyGroup Condition="'$(_BuildGitSourceExitCode)' == '0'">
+      <_BuildSourceCandidate>@(_BuildGitSource)</_BuildSourceCandidate>
+      <_BuildSource Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('$(_BuildSourceCandidate)', '^[0-9a-f]{7,40}$'))">$(_BuildSourceCandidate)</_BuildSource>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(_BuildGitStatusExitCode)' == '0' and '$(_BuildSource)' != '不明'">
+      <_BuildStatusCount>@(_BuildGitStatus->Count())</_BuildStatusCount>
+      <_BuildDirty>false</_BuildDirty>
+      <_BuildDirty Condition="'$(_BuildStatusCount)' != '0'">true</_BuildDirty>
+    </PropertyGroup>
+    <MakeDir Directories="$(IntermediateOutputPath)" />
+    <!-- NoBuild publishing must preserve the snapshot already embedded in the assembly. -->
+    <WriteLinesToFile Condition="'$(NoBuild)' != 'true'" File="$(_BuildInfoFile)" Overwrite="true" Encoding="UTF-8" WriteOnlyWhenDifferent="true"
+                      Lines='{ "AppName": "$(Product)", "Version": "$(Version)", "SourceIdentifier": "$(_BuildSource)", "HasUncommittedChanges": $(_BuildDirty), "BuildTimeUtc": "$(_BuildUtc)" }' />
+    <Error Condition="!Exists('$(_BuildInfoFile)')" Text="Build information is missing. Build the app before publishing with --no-build." />
+    <ItemGroup>
+      <EmbeddedResource Include="$(_BuildInfoFile)" LogicalName="AiUsageMonitor.BuildInfo.json" />
+      <Content Include="$(_BuildInfoFile)" TargetPath="build-info.json"
+               CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="true" />
+    </ItemGroup>
+  </Target>
+</Project>
