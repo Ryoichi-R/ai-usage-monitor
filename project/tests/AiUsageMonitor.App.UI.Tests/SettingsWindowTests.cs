@@ -8,6 +8,7 @@ using AiUsageMonitor.Core.Settings;
 using AiUsageMonitor.Core.Usage;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Automation;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input.Platform;
@@ -293,6 +294,34 @@ public sealed class SettingsWindowTests
         {
             window.Close();
         }
+    }
+
+    [AvaloniaFact]
+    public void ClearingValidationDoesNotAnnounceAnEmptyStringAndKeepsRealErrorsAssertive()
+    {
+        SettingsWindow window = CreateWindow();
+        var observed = new List<(string? Text, AutomationLiveSetting Live)>();
+        window.ValidationMessage.PropertyChanged += (_, change) =>
+        {
+            if (change.Property == TextBlock.TextProperty)
+                observed.Add((window.ValidationMessage.Text, AutomationProperties.GetLiveSetting(window.ValidationMessage)));
+        };
+        try
+        {
+            window.ScaleBox.Text = "invalid";
+            window.Save();
+            Assert.Contains(observed, item => !string.IsNullOrEmpty(item.Text) && item.Live == AutomationLiveSetting.Assertive);
+            window.ScaleBox.Text = "150";
+            Assert.Empty(window.ValidationMessage.Text!);
+            Assert.Contains(observed, item => string.IsNullOrEmpty(item.Text));
+            Assert.All(observed.Where(item => string.IsNullOrEmpty(item.Text)), item => Assert.Equal(AutomationLiveSetting.Off, item.Live));
+            Assert.Equal(AutomationLiveSetting.Assertive, AutomationProperties.GetLiveSetting(window.ValidationMessage));
+            window.ScaleBox.Text = "invalid again";
+            window.Save();
+            Assert.NotEmpty(window.ValidationMessage.Text!);
+            Assert.Equal(AutomationLiveSetting.Assertive, AutomationProperties.GetLiveSetting(window.ValidationMessage));
+        }
+        finally { window.Close(); }
     }
 
     [AvaloniaFact]

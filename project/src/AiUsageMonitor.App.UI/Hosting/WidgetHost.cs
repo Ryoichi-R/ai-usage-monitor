@@ -45,6 +45,8 @@ public sealed class WidgetHost : IAsyncDisposable
     private Task? _codexPollTask;
     private Task? _claudePollTask;
     private TrayIcon? _tray;
+    private readonly List<(WorkStatusRowViewModel Row, NativeMenuItem Item)> _workNoticeItems = [];
+    private bool _workMenuOpen;
     private NativeMenuItem? _standardModeItem;
     private NativeMenuItem? _compactModeItem;
     private SettingsWindow? _settingsWindow;
@@ -359,22 +361,41 @@ public sealed class WidgetHost : IAsyncDisposable
         menu.Items.Add(new NativeMenuItemSeparator());
         menu.Items.Add(MenuItem("設定…", ShowSettings));
         menu.Items.Add(MenuItem("作業状態の接続設定…", ShowWorkStatusSetup));
+        _workNoticeItems.Clear();
         foreach (WorkStatusRowViewModel row in _viewModel!.WorkStatus.Rows)
         {
             // Keep the IDs with this menu instance, including on Windows without Opening.
-            menu.Items.Add(new NativeMenuItem(row.Name + "の通知を確認済みにする")
+            var item = new NativeMenuItem(row.Name + "の通知を確認済みにする")
             {
                 CommandParameter = row.NoticeIds.ToArray(),
                 Command = row.AcknowledgeCommand,
-            });
+            };
+            menu.Items.Add(item);
+            _workNoticeItems.Add((row, item));
         }
         menu.Items.Add(MenuItem("今すぐ更新", () => _ = RequestRefreshAsync()));
         menu.Items.Add(MenuItem("表示／非表示", ToggleWidgetVisibility));
         menu.Items.Add(displayMode);
         menu.Items.Add(new NativeMenuItemSeparator());
         menu.Items.Add(MenuItem("終了", _shutdown));
+        if (OperatingSystem.IsMacOS())
+        {
+            menu.NeedsUpdate += (_, _) => { if (!_workMenuOpen) RefreshWorkNoticeParameters(); };
+            menu.Opening += (_, _) => _workMenuOpen = true;
+            menu.Closed += (_, _) => _workMenuOpen = false;
+        }
         UpdateDisplayModeChecks();
         return menu;
+    }
+
+    private void RefreshWorkNoticeParameters()
+    {
+        foreach (var (row, item) in _workNoticeItems)
+        {
+            item.CommandParameter = row.NoticeIds.ToArray();
+            // Avalonia 12.1.2 does not re-evaluate CanExecute when only the parameter changes.
+            item.IsEnabled = row.AcknowledgeCommand.CanExecute(item.CommandParameter);
+        }
     }
 
     // WPF版と同じく、常駐アイコンのダブルクリックで設定画面を開く。
@@ -817,7 +838,15 @@ public sealed class WidgetHost : IAsyncDisposable
         _viewModel.WorkStatus.Update(current.Model, _settings.ShowCodexWorkStatus,
             _settings.ShowClaudeWorkStatus, current.Problem, DateTimeOffset.UtcNow, current.UnavailableProviders);
         if (_tray is not null && !previousIds.SequenceEqual(_viewModel.WorkStatus.Rows.SelectMany(row => row.NoticeIds)))
-            _tray.Menu = CreateTrayMenu();
+        {
+            // Avalonia.Native cannot replace an already exported tray menu on macOS.
+            // Freeze the confirmation snapshot while its menu is visible.
+            if (OperatingSystem.IsMacOS())
+            {
+                if (!_workMenuOpen) RefreshWorkNoticeParameters();
+            }
+            else _tray.Menu = CreateTrayMenu();
+        }
     }
 
     private async Task PollWorkStatusAsync(CancellationToken cancellationToken)

@@ -46,7 +46,7 @@ dotnet build AiUsageMonitor.Mac.slnx
 pwsh -NoProfile -File scripts/publish-ai-usage-monitor-macos.ps1
 ```
 
-出力はproject/artifacts/macos-*内のAI Usage Monitor.appです。ad-hoc署名付きの開発版であり、署名検証の成功をGatekeeperや実CLI・画面の受入結果へ置き換えません。
+出力はproject/artifacts/macos-*内のAI Usage Monitor.appです。ad-hoc署名付きの開発版であり、署名検証の成功をGatekeeperや実CLI・画面の受入結果へ置き換えません。 Developer IDとHardened Runtimeの準備、証明書がない場合の制約は[Macの署名・公証準備](macos-signing.md)を参照してください。
 
 ## 作業状態の接続
 

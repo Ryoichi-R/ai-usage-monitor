@@ -23,6 +23,7 @@ $csproj = Join-Path $project 'AiUsageMonitor.Core.csproj'
 $expectedVersion = [string]$props.Project.PropertyGroup.Version
 $dotnet = (Get-Command dotnet -CommandType Application | Select-Object -First 1).Source
 $previousPath = $env:PATH
+$previousGitCeiling = $env:GIT_CEILING_DIRECTORIES
 $count = 0
 
 function Assert-VersionContract {
@@ -52,6 +53,8 @@ function Invoke-Snapshot {
 }
 
 try {
+    # The fixture can live under another clone. Do not inherit that clone's Git identity.
+    $env:GIT_CEILING_DIRECTORIES = Split-Path -Parent $fixture
     # A source export without a repository must build successfully and report unknown.
     $export = Invoke-Snapshot 'osx-arm64'
     Assert-VersionContract ($export.SourceIdentifier -ceq '不明' -and $null -eq $export.HasUncommittedChanges) 'Source export must report unknown.'
@@ -117,5 +120,6 @@ exit 1
     Write-Host "Version information build contract passed: $count snapshots."
 } finally {
     $env:PATH = $previousPath
+    $env:GIT_CEILING_DIRECTORIES = $previousGitCeiling
     Write-Host "Version contract fixtures retained: $fixture"
 }

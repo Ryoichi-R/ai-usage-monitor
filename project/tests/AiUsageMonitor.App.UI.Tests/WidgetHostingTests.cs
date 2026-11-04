@@ -276,7 +276,76 @@ public sealed class WidgetHostingTests
         using var stream = new MemoryStream();
         bitmap.Save(stream, PngBitmapEncoderOptions.Default);
         stream.Position = 0;
-        var services = new WidgetHostServices
+        WidgetHostServices services = WorkStatusTrayServices(paths, root, new WindowIcon(stream));
+        await using var host = new WidgetHost(services, () => { });
+        await host.StartAsync();
+        NativeMenu firstMenu = Assert.IsType<NativeMenu>(host.TrayMenu);
+        NativeMenuItem item = Assert.Single(firstMenu.Items.OfType<NativeMenuItem>(), i => i.Header == "Codex Desktopの通知を確認済みにする");
+        var firstIds = Assert.IsAssignableFrom<IReadOnlyList<string>>(item.CommandParameter);
+        Assert.Equal(2, firstIds.Count);
+        Assert.True(item.Command!.CanExecute(item.CommandParameter));
+        if (OperatingSystem.IsMacOS()) RaiseMenuEvent(firstMenu, "RaiseOpening");
+        WorkStatusCollector.WriteEvent(paths.WorkStatusDirectory,
+            new(1, "new", WorkProvider.CodexDesktop, "new", "t", WorkEventKind.Interrupted, now.AddMilliseconds(1), true));
+        await WaitForAsync(() => host.ViewModel!.WorkStatus.Rows[0].NoticeIds.Count == 3);
+        if (OperatingSystem.IsMacOS())
+        {
+            Assert.Same(firstMenu, host.TrayMenu);
+            Assert.Same(item, Assert.Single(host.TrayMenu!.Items.OfType<NativeMenuItem>(), i => i.Header == item.Header));
+            RaiseMenuEvent(firstMenu, "RaiseNeedsUpdate");
+            Assert.Equal(2, Assert.IsAssignableFrom<IReadOnlyList<string>>(item.CommandParameter).Count);
+        }
+        else Assert.NotSame(firstMenu, host.TrayMenu);
+        // Invoke the actual exporter callback; an older Windows menu keeps its own parameter.
+        RaiseMenuEvent(item, "RaiseClicked");
+        await WaitForAsync(() => store.Load().AcknowledgedIds.Count == 2);
+        WorkStatusModel saved = store.Load();
+        WorkStatusSummary codex = saved.Summarize(WorkProvider.CodexDesktop, DateTimeOffset.UtcNow, true);
+        Assert.Equal(0, codex.Unknown);
+        Assert.Equal("new", Assert.Single(codex.Notices).SessionId);
+        Assert.Equal(1, saved.Summarize(WorkProvider.ClaudeCode, DateTimeOffset.UtcNow, true).Candidates);
+        if (OperatingSystem.IsMacOS())
+        {
+            Assert.Equal(2, Assert.IsAssignableFrom<IReadOnlyList<string>>(item.CommandParameter).Count);
+            RaiseMenuEvent(firstMenu, "RaiseClosed");
+            RaiseMenuEvent(firstMenu, "RaiseNeedsUpdate");
+            Assert.Single(Assert.IsAssignableFrom<IReadOnlyList<string>>(item.CommandParameter));
+            Assert.True(item.IsEnabled);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task TrayCommandEnabledStateFollowsFirstNoticeAndAcknowledgement()
+    {
+        string parent = Environment.GetEnvironmentVariable("AI_USAGE_MONITOR_TEST_ARTIFACTS_ROOT") ?? AppContext.BaseDirectory;
+        string root = Path.Combine(parent, "work-tray-enabled", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        IAppPathProvider paths = new TestPaths(root);
+        var store = new WorkStatusStore(paths.WorkStatusDirectory);
+        store.Save(new WorkStatusModel());
+        using var bitmap = new RenderTargetBitmap(new PixelSize(16, 16));
+        using var stream = new MemoryStream();
+        bitmap.Save(stream, PngBitmapEncoderOptions.Default);
+        stream.Position = 0;
+        await using var host = new WidgetHost(WorkStatusTrayServices(paths, root, new WindowIcon(stream)), () => { });
+        await host.StartAsync();
+        NativeMenu firstMenu = Assert.IsType<NativeMenu>(host.TrayMenu);
+        NativeMenuItem firstItem = Assert.Single(firstMenu.Items.OfType<NativeMenuItem>(), i => i.Header == "Codex Desktopの通知を確認済みにする");
+        Assert.False(firstItem.IsEnabled);
+        WorkStatusCollector.WriteEvent(paths.WorkStatusDirectory,
+            new(1, "first", WorkProvider.CodexDesktop, "first", "t", WorkEventKind.Interrupted, DateTimeOffset.UtcNow, true));
+        await WaitForAsync(() => host.ViewModel!.WorkStatus.Rows[0].NoticeIds.Count == 1);
+        NativeMenuItem item = Assert.Single(host.TrayMenu!.Items.OfType<NativeMenuItem>(), i => i.Header == firstItem.Header);
+        Assert.True(item.IsEnabled);
+        RaiseMenuEvent(item, "RaiseClicked");
+        await WaitForAsync(() => host.ViewModel!.WorkStatus.Rows[0].NoticeIds.Count == 0);
+        Assert.Single(store.Load().AcknowledgedIds);
+        NativeMenuItem clearedItem = Assert.Single(host.TrayMenu!.Items.OfType<NativeMenuItem>(), i => i.Header == firstItem.Header);
+        Assert.False(clearedItem.IsEnabled);
+    }
+
+    private static WidgetHostServices WorkStatusTrayServices(IAppPathProvider paths, string root, WindowIcon icon) =>
+        new()
         {
             AppPaths = paths,
             WorkStatusOnly = true,
@@ -289,27 +358,12 @@ public sealed class WidgetHostingTests
             ClaudeBridgePath = Path.Combine(root, "bridge"),
             ReadmePath = Path.Combine(root, "README.md"),
             UserProfile = root,
-            StatusIcon = new WindowIcon(stream),
+            StatusIcon = icon,
         };
-        await using var host = new WidgetHost(services, () => { });
-        await host.StartAsync();
-        NativeMenu firstMenu = Assert.IsType<NativeMenu>(host.TrayMenu);
-        NativeMenuItem item = Assert.Single(firstMenu.Items.OfType<NativeMenuItem>(), i => i.Header == "Codex Desktopの通知を確認済みにする");
-        Assert.Equal(2, Assert.IsAssignableFrom<IReadOnlyList<string>>(item.CommandParameter).Count);
-        Assert.True(item.Command!.CanExecute(item.CommandParameter));
-        WorkStatusCollector.WriteEvent(paths.WorkStatusDirectory,
-            new(1, "new", WorkProvider.CodexDesktop, "new", "t", WorkEventKind.Interrupted, now.AddMilliseconds(1), true));
-        await WaitForAsync(() => host.ViewModel!.WorkStatus.Rows[0].NoticeIds.Count == 3);
-        Assert.NotSame(firstMenu, host.TrayMenu);
-        // The Win32 presenter invokes the command without NativeMenu.Opening.
-        item.Command.Execute(item.CommandParameter);
-        await WaitForAsync(() => store.Load().AcknowledgedIds.Count == 2);
-        WorkStatusModel saved = store.Load();
-        WorkStatusSummary codex = saved.Summarize(WorkProvider.CodexDesktop, DateTimeOffset.UtcNow, true);
-        Assert.Equal(0, codex.Unknown);
-        Assert.Equal("new", Assert.Single(codex.Notices).SessionId);
-        Assert.Equal(1, saved.Summarize(WorkProvider.ClaudeCode, DateTimeOffset.UtcNow, true).Candidates);
-    }
+
+    private static void RaiseMenuEvent(object menu, string name) =>
+        menu.GetType().GetMethods(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            .Single(method => method.Name.EndsWith("." + name, StringComparison.Ordinal)).Invoke(menu, null);
 
     private static async Task WaitForAsync(Func<bool> condition)
     {
