@@ -39,7 +39,7 @@ internal sealed class MacApp : Application
     {
         MacAppPathProvider paths = Program.Paths;
         var log = new DiagnosticLog(paths.UserHomeDirectory);
-        var lifecycle = MacProductLifecycle.Start(desktop.Shutdown, MacComposition.Create(paths, log), log.Write);
+        var lifecycle = MacProductLifecycle.Start(desktop.Shutdown, MacComposition.Create(paths, log, Program.WorkStatusOnly), log.Write);
         desktop.ShutdownRequested += (_, e) => lifecycle.OnShutdownRequested(e);
     }
 }

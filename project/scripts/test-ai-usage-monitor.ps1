@@ -121,6 +121,10 @@ $env:AI_USAGE_MONITOR_TEST_ARTIFACTS_ROOT = $testOutput.ArtifactsPath
         }
     )
 
+    $coverageTargets += @(
+        [pscustomobject]@{ Package = 'AiUsageMonitor.WorkStatus'; Project = Join-Path $PSScriptRoot '../tests/AiUsageMonitor.WorkStatus.Tests/AiUsageMonitor.WorkStatus.Tests.csproj' },
+        [pscustomobject]@{ Package = 'ai-usage-work-status-bridge'; SourceName = 'AiUsageMonitor.WorkStatus.Bridge'; Project = Join-Path $PSScriptRoot '../tests/AiUsageMonitor.WorkStatus.Tests/AiUsageMonitor.WorkStatus.Tests.csproj' }
+    )
     $coverageTargets += [pscustomobject]@{
         Package = 'AiUsageMonitor.App'
         SourceName = 'AiUsageMonitor.App.Windows'

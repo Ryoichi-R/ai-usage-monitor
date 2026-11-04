@@ -34,4 +34,7 @@
   <Project Path="src/AiUsageMonitor.Claude.Mac/AiUsageMonitor.Claude.Mac.csproj" />
   <Project Path="src/AiUsageMonitor.Claude.Bridge.Mac/AiUsageMonitor.Claude.Bridge.Mac.csproj" />
   <Project Path="tests/AiUsageMonitor.Claude.Mac.Tests/AiUsageMonitor.Claude.Mac.Tests.csproj" />
+  <Project Path="src/AiUsageMonitor.WorkStatus/AiUsageMonitor.WorkStatus.csproj" />
+  <Project Path="src/AiUsageMonitor.WorkStatus.Bridge/AiUsageMonitor.WorkStatus.Bridge.csproj" />
+  <Project Path="tests/AiUsageMonitor.WorkStatus.Tests/AiUsageMonitor.WorkStatus.Tests.csproj" />
 </Solution>

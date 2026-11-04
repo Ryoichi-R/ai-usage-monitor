@@ -11,6 +11,8 @@ public interface IAppPathProvider
     /// <summary>設定ファイル（settings.json）の完全パス。</summary>
     string SettingsFilePath { get; }
 
+    string WorkStatusDirectory => Path.Combine(Path.GetDirectoryName(SettingsFilePath)!, "WorkStatus");
+
     /// <summary>Claude CLIを起動する専用workspaceのディレクトリ。</summary>
     string ClaudeWorkspaceDirectory { get; }
 

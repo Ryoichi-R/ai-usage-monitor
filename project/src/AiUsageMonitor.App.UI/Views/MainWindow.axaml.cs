@@ -9,6 +9,7 @@ using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Media.Immutable;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 
 namespace AiUsageMonitor.App.UI.Views;
 
@@ -167,6 +168,7 @@ public partial class MainWindow : Window
 
     private void OnRootPointerPressed(object? sender, PointerPressedEventArgs e)
     {
+        if (e.Source is Visual visual && visual.GetSelfAndVisualAncestors().OfType<Button>().Any()) return;
         if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed || !TryBeginUserMove()) return;
         BeginMoveDrag(e);
         _moveSettleTimer.Stop();

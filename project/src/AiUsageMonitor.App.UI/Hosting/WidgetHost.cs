@@ -38,6 +38,10 @@ public sealed class WidgetHost : IAsyncDisposable
     private BackgroundLayerCoordinator? _background;
     private CodexAccountsCoordinator? _codexCoordinator;
     private IClaudeUsageListener? _claudeListener;
+    private WorkStatusRuntime? _workRuntime;
+    private Task? _workPollTask;
+    private Task _positionSaveTask = Task.CompletedTask;
+    private WorkStatusSetupWindow? _workSetupWindow;
     private Task? _codexPollTask;
     private Task? _claudePollTask;
     private TrayIcon? _tray;
@@ -75,6 +79,8 @@ public sealed class WidgetHost : IAsyncDisposable
 
     internal bool IsClaudeListening => _claudeListener is not null;
 
+    internal NativeMenu? TrayMenu => _tray?.Menu;
+
     /// <summary>起動が完了した（初回案内の表示を含む）。</summary>
     public event Action? Started;
 
@@ -84,21 +90,37 @@ public sealed class WidgetHost : IAsyncDisposable
         bool isFirstRun = !File.Exists(settingsPath);
         _store = new FileSystemSettingsStore(settingsPath);
         _settings = await _store.LoadAsync(_lifetime.Token);
+        if (_services.WorkStatusOnly)
+            _settings = _settings with { ShowCodexUsage = false, ShowClaudeUsage = false, ShowCodexWorkStatus = true, ShowClaudeWorkStatus = true, ClickThrough = false };
         _viewModel = new UsageViewModel
         {
-            ShowCodex = CodexFeaturesEnabled(),
+            ShowCodex = !_services.WorkStatusOnly && CodexFeaturesEnabled(),
             ShowClaude = _settings.ShowClaudeUsage,
         };
         ConfigureCodexViewModels();
+        _workRuntime = new(_services.AppPaths.WorkStatusDirectory, _services.Diagnostic);
+        foreach (WorkStatusRowViewModel row in _viewModel.WorkStatus.Rows)
+            row.AcknowledgeRequested += ids => _ = AcknowledgeWorkStatusAsync(ids);
+        UpdateWorkStatus();
 
         _window = new MainWindow { DataContext = _viewModel };
+        if (_services.WorkStatusOnly)
+        {
+            _window.Title = "AI Usage Monitor - 作業状態の隔離検証";
+            _window.ShowInTaskbar = true;
+            _window.WindowDecorations = WindowDecorations.Full;
+            _window.Closed += (_, _) => _shutdown();
+        }
         _window.ApplySettings(_settings, reposition: false);
         _layer = _services.CreateLayerController();
         _layer.HealthChanged += OnLayerHealthChanged;
         _background = new BackgroundLayerCoordinator(_window, _services.CreateLayerController(), _services.Diagnostic);
         _window.RepositionRequested += Reposition;
         _window.UserMoveStarted += () => _restoringInitialPlacement = false;
-        _window.UserMoveCompleted += () => _ = SaveUserPositionAsync();
+        _window.UserMoveCompleted += () =>
+        {
+            if (_disposed == 0) _positionSaveTask = Task.WhenAll(_positionSaveTask, SaveUserPositionAsync());
+        };
         _window.Opened += (_, _) =>
         {
             if (!_layerAttached)
@@ -126,7 +148,8 @@ public sealed class WidgetHost : IAsyncDisposable
         Dispatcher.UIThread.Post(CompleteInitialPlacement, DispatcherPriority.Background);
         _codexPollTask = _codexCoordinator.RunPeriodicPollingAsync(_lifetime.Token);
         _claudePollTask = PollClaudeAsync(_lifetime.Token);
-        if (isFirstRun) ShowWelcome();
+        _workPollTask = PollWorkStatusAsync(_lifetime.Token);
+        if (isFirstRun && !_services.WorkStatusOnly) ShowWelcome();
         Started?.Invoke();
     }
 
@@ -310,6 +333,19 @@ public sealed class WidgetHost : IAsyncDisposable
     private TrayIcon? CreateTray()
     {
         if (_services.StatusIcon is null) return null;
+        var tray = new TrayIcon
+        {
+            Icon = _services.StatusIcon,
+            ToolTipText = TrayToolTip(),
+            Menu = CreateTrayMenu(),
+            IsVisible = true,
+        };
+        if (_services.OpenSettingsOnTrayDoubleClick) tray.Clicked += (_, _) => OnTrayClicked();
+        return tray;
+    }
+
+    private NativeMenu CreateTrayMenu()
+    {
         _standardModeItem = new NativeMenuItem("標準表示") { ToggleType = MenuItemToggleType.Radio };
         _standardModeItem.Click += (_, _) => _ = ApplyDisplayModeAsync(WidgetDisplayMode.Standard);
         _compactModeItem = new NativeMenuItem("縮小表示") { ToggleType = MenuItemToggleType.Radio };
@@ -322,21 +358,23 @@ public sealed class WidgetHost : IAsyncDisposable
         menu.Items.Add(MenuItem("Claude Code連携…", ShowClaudeSetup));
         menu.Items.Add(new NativeMenuItemSeparator());
         menu.Items.Add(MenuItem("設定…", ShowSettings));
+        menu.Items.Add(MenuItem("作業状態の接続設定…", ShowWorkStatusSetup));
+        foreach (WorkStatusRowViewModel row in _viewModel!.WorkStatus.Rows)
+        {
+            // Keep the IDs with this menu instance, including on Windows without Opening.
+            menu.Items.Add(new NativeMenuItem(row.Name + "の通知を確認済みにする")
+            {
+                CommandParameter = row.NoticeIds.ToArray(),
+                Command = row.AcknowledgeCommand,
+            });
+        }
         menu.Items.Add(MenuItem("今すぐ更新", () => _ = RequestRefreshAsync()));
         menu.Items.Add(MenuItem("表示／非表示", ToggleWidgetVisibility));
         menu.Items.Add(displayMode);
         menu.Items.Add(new NativeMenuItemSeparator());
         menu.Items.Add(MenuItem("終了", _shutdown));
         UpdateDisplayModeChecks();
-        var tray = new TrayIcon
-        {
-            Icon = _services.StatusIcon,
-            ToolTipText = TrayToolTip(),
-            Menu = menu,
-            IsVisible = true,
-        };
-        if (_services.OpenSettingsOnTrayDoubleClick) tray.Clicked += (_, _) => OnTrayClicked();
-        return tray;
+        return menu;
     }
 
     // WPF版と同じく、常駐アイコンのダブルクリックで設定画面を開く。
@@ -422,6 +460,7 @@ public sealed class WidgetHost : IAsyncDisposable
                 () => _services.ShellOpener.OpenFolder(Path.Combine(Path.GetDirectoryName(_services.ReadmePath)!, "docs", "troubleshooting", "README.md"))).Show(dialog);
             else Release();
         };
+        dialog.WorkStatusSetupRequested += ShowWorkStatusSetup;
         dialog.ClaudeSetupRequested += () =>
         {
             setupOpenedFromDialog = true;
@@ -457,6 +496,7 @@ public sealed class WidgetHost : IAsyncDisposable
         // 逆順だと保存前のセクション高で配置され、直後の高さ変化と競合する。
         _viewModel.ShowCodex = CodexFeaturesEnabled();
         _viewModel.ShowClaude = _settings.ShowClaudeUsage;
+        UpdateWorkStatus();
         _window.ApplySettings(_settings, reposition: true);
         ApplyLayer();
         await ConfigureCodexAsync();
@@ -543,6 +583,7 @@ public sealed class WidgetHost : IAsyncDisposable
 
     private void ApplyStartupSetting()
     {
+        if (_services.WorkStatusOnly) return;
         try
         {
             _services.Startup.Apply(_settings.StartWithWindows);
@@ -659,6 +700,7 @@ public sealed class WidgetHost : IAsyncDisposable
 
     private async Task ConfigureCodexAsync()
     {
+        if (_services.WorkStatusOnly) return;
         if (_codexCoordinator is null) return;
         AppSettings runtimeSettings = CodexFeaturesEnabled()
             ? _settings
@@ -694,6 +736,7 @@ public sealed class WidgetHost : IAsyncDisposable
 
     private void ConfigureClaude()
     {
+        if (_services.WorkStatusOnly) return;
         _claudeSchedule.Changed();
         if (_settings.ShowClaudeUsage)
         {
@@ -766,6 +809,55 @@ public sealed class WidgetHost : IAsyncDisposable
 
     private ClaudeRuntimeHealth CurrentClaudeHealth() => _claudeRuntime.CurrentHealth(DateTimeOffset.UtcNow);
 
+    private void UpdateWorkStatus()
+    {
+        if (_viewModel is null || _workRuntime is null) return;
+        string[] previousIds = [.. _viewModel.WorkStatus.Rows.SelectMany(row => row.NoticeIds)];
+        var current = _workRuntime.Current;
+        _viewModel.WorkStatus.Update(current.Model, _settings.ShowCodexWorkStatus,
+            _settings.ShowClaudeWorkStatus, current.Problem, DateTimeOffset.UtcNow, current.UnavailableProviders);
+        if (_tray is not null && !previousIds.SequenceEqual(_viewModel.WorkStatus.Rows.SelectMany(row => row.NoticeIds)))
+            _tray.Menu = CreateTrayMenu();
+    }
+
+    private async Task PollWorkStatusAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
+            do
+            {
+                if (_workRuntime is not null && (_settings.ShowCodexWorkStatus || _settings.ShowClaudeWorkStatus))
+                {
+                    await _workRuntime.PollAsync(cancellationToken);
+                    Dispatcher.UIThread.Post(UpdateWorkStatus);
+                }
+            } while (await timer.WaitForNextTickAsync(cancellationToken));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+    }
+
+    private async Task AcknowledgeWorkStatusAsync(IReadOnlyList<string> ids)
+    {
+        if (_workRuntime is null || _disposed != 0) return;
+        await _workRuntime.AcknowledgeAsync(ids);
+        UpdateWorkStatus();
+    }
+
+    private void ShowWorkStatusSetup()
+    {
+        if (_workSetupWindow is not null) { _workSetupWindow.Activate(); return; }
+        _workSetupWindow = new WorkStatusSetupWindow(_services.AppPaths.WorkStatusDirectory, async path =>
+        {
+            if (_workRuntime is null || _disposed != 0) return false;
+            bool imported = await _workRuntime.ImportLegacyAsync(path);
+            UpdateWorkStatus();
+            return imported;
+        });
+        _workSetupWindow.Closed += (_, _) => _workSetupWindow = null;
+        _workSetupWindow.Show();
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
@@ -775,6 +867,9 @@ public sealed class WidgetHost : IAsyncDisposable
         // 通常はOperationCanceledExceptionだけで終わるが、想定外の例外が残っていても以降の破棄は必ず続ける。
         if (_codexPollTask is not null) try { await _codexPollTask; } catch (Exception) { }
         if (_claudePollTask is not null) try { await _claudePollTask; } catch (Exception) { }
+        if (_workPollTask is not null) try { await _workPollTask; } catch (Exception) { }
+        if (_workRuntime is not null) await _workRuntime.DisposeAsync();
+        _workSetupWindow?.Close();
         _claudeSchedule.Dispose();
         if (_codexCoordinator is not null) await _codexCoordinator.DisposeAsync();
         if (_claudeListener is not null) await _claudeListener.DisposeAsync();
@@ -785,6 +880,7 @@ public sealed class WidgetHost : IAsyncDisposable
         _window?.Close();
         _tray?.Dispose();
         _layer?.Dispose();
+        await _positionSaveTask;
         _store?.Dispose();
         _refreshGate.Dispose();
         _lifetime.Dispose();

@@ -10,7 +10,7 @@ namespace AiUsageMonitor.App.Mac;
 [SupportedOSPlatform("macos")]
 internal static class MacComposition
 {
-    public static WidgetHostServices Create(MacAppPathProvider paths, DiagnosticLog log)
+    public static WidgetHostServices Create(MacAppPathProvider paths, DiagnosticLog log, bool workStatusOnly = false)
     {
         ArgumentNullException.ThrowIfNull(paths);
         ArgumentNullException.ThrowIfNull(log);
@@ -25,7 +25,10 @@ internal static class MacComposition
         return new WidgetHostServices
         {
             AppPaths = paths,
-            Startup = new LaunchAgentStartupService(
+            WorkStatusOnly = workStatusOnly,
+            UserProfile = paths.UserHomeDirectory,
+            InheritedCodexHome = workStatusOnly ? null : Environment.GetEnvironmentVariable("CODEX_HOME"),
+            Startup = workStatusOnly ? new AiUsageMonitor.Platform.NoStartupService() : new LaunchAgentStartupService(
                 paths.LaunchAgentsDirectory,
                 () => LaunchAgentStartupService.ResolveProgramArguments(
                     Environment.ProcessPath ?? throw new InvalidOperationException("The process path is unavailable."),

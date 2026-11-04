@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>ai-usage-work-status-bridge</AssemblyName>
+  </PropertyGroup>
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <DefineConstants>$(DefineConstants);WORK_STATUS_WINDOWS</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+    <DefineConstants>$(DefineConstants);WORK_STATUS_MAC</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../AiUsageMonitor.WorkStatus/AiUsageMonitor.WorkStatus.csproj" />
+    <Compile Include="../AiUsageMonitor.Platform.Windows/WorkStatus/WindowsDesktopOrigin.cs" Link="WindowsDesktopOrigin.cs" Condition="$([MSBuild]::IsOSPlatform('Windows'))" />
+    <Compile Include="../AiUsageMonitor.Platform.Mac/WorkStatus/MacDesktopOrigin.cs" Link="MacDesktopOrigin.cs" Condition="$([MSBuild]::IsOSPlatform('OSX'))" />
+  </ItemGroup>
+</Project>

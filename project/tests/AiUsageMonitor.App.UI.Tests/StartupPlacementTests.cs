@@ -96,6 +96,10 @@ public sealed class StartupPlacementTests
         MainWindowTestSupport.Settle(window);
         Assert.Equal(desired, window.Position);
         Assert.NotEqual(fixture.Saved.CustomTopFraction, fixture.Host.Settings.CustomTopFraction);
+        await fixture.Host.DisposeAsync();
+        using var stored = new FileSystemSettingsStore(fixture.Paths.SettingsFilePath);
+        Assert.Equal(fixture.Host.Settings.CustomTopFraction, (await stored.LoadAsync()).CustomTopFraction);
+        Assert.Empty(Directory.GetFiles(Path.GetDirectoryName(fixture.Paths.SettingsFilePath)!, "*.tmp"));
     }
 
     private static ClaudeUsageObservation AvailableObservation() => new(ClaudeUsageSourceKind.CliScreen,

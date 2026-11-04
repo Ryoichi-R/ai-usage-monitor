@@ -1,5 +1,7 @@
 # AI Usage Monitor
 
+> **開発中（Experimental）**。Windows x64で一部機能を実機確認しています。macOSとWindows ARM64の実機受入は未完了です。[他PCでの開発手順](docs/cross-platform-development.md)を参照してください。
+
 OpenAIおよびAnthropic非公式のWindows用デスクトップウィジェットです。CodexとClaude Codeの利用枠、リセット時刻、最終正常取得日時をまとめて監視します。Codexでは任意で追加利用額とクレジット残高も表示します。Codexは公式の `codex app-server` RPC、Claude Codeは公式CLIから取得し、各providerを個別に有効化できます。
 
 ## 必要条件
@@ -149,3 +151,7 @@ Claudeの初回連携はメニューバーの「Claude Code連携…」から専
 ## バージョン情報
 
 「設定…」の「バージョン情報」で、アプリ名・バージョン・ソース識別子・未コミット変更の有無・ビルド日時（UTC）・実行版（OS／アプリのアーキテクチャ）を確認し、「情報をコピー」でまとめてコピーできます。製品バージョンの定義と更新規則、配布メタデータとの対応は[バージョン管理](docs/versioning.md)を参照してください。
+
+## 作業状態の表示（任意・段階提供）
+
+Codex DesktopとClaude Codeの作業状態を、既存の利用枠と独立して表示できる。初期状態はOFF。全体設定の表示項目と「作業状態の接続設定…」を使う。通常表示は作業中・入力待ち・応答終了とし、中断履歴やモニター独自の未確認件数は表示しない。確定完了検出とMacの実機受入は残る。本文やsession JSONLは読まない。[接続・通知保持・移行・制限](docs/work-status.md)を参照。

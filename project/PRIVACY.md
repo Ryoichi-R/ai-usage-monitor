@@ -26,3 +26,13 @@ macOS版も、上記と同じく認証情報・使用率・生画面・account�
 - 子孫の離脱を検出した場合: その回の取得結果を破棄し、`claude-active-quarantine`へ検証済みCLIのversion文字列だけを書きます。再検証が済むまで、そのversionでの自動取得を止めます。
 - Claude自動取得: 公式CLIを疑似端末（400桁×120行）で起動し、画面はメモリ上の文字の表へ復元して解析します。起動時の環境変数は固定の許可リストだけで、利用者の設定ファイルは読ませません。製品が起動したCLIが自身を自動更新しないよう、公式の`DISABLE_AUTOUPDATER=1`を渡します。
 - statusLine受信: `/private/tmp/aiusage-statusline-<uid>/v1.sock`（親ディレクトリ0700、socket 0600、所有者・種類・接続元ユーザーを検査）で受け取ります。受け取った使用率はメモリだけに保持します。
+
+## 作業状態監視（任意）
+
+設定を有効にし、projectごとの公式hooksを導入した場合だけ、作業開始・入力待ち・停止候補等の最小metadataをWorkStatus/state.jsonとevents/へ保存する。session/turnはhash化し、通知IDと確認状態・受信時刻・順序・providerを保持する。本文、応答、ツール引数は保存せず、transcript、認証ファイル、session JSONLは読まない。hookのstdinは最大4MiBの一時メモリで受け、必要な項目以外を捨てる。
+
+Codexの質問カードについては、同じhook入力のtool名・call ID・質問数、およびUserPromptSubmitの構造化回答envelope内のquestionItemIdだけを抽出する。未回答/回答済みの対応付けに使うIDはhash化し、質問文・選択肢・回答内容・通常のprompt本文を保存しない。stdinのJSON全体を一時メモリで解析するが、会話履歴やtranscriptを追加で読み取らない。
+
+Windows/Macとも既存data root配下を使用し、PC間同期や外部送信をしない。Desktop由来の判定は祖先PID・実行ファイルpath（MacはPID再利用確認のため起動時刻も使用）だけで行い、コマンドラインや環境変数を読まない。作業状態用error.logは上限1MiBでUTC・型・HResult・入力値やファイル名を含まないstackを記録する。例外message/Dataやraw payloadは記録しない。
+
+表示OFF・再起動では未確認通知を消さず、本人の確認と保存成功後だけ確認済みにする。旧版の状態を本人が選択して移行する場合は、旧snapshotをlegacy-backupsへ保持し通知だけを引き継ぐ。[保存と制限](docs/work-status.md)を参照。

@@ -124,6 +124,10 @@ if (-not (Test-Path -LiteralPath $bridge -PathType Leaf)) {
     throw "Bridge missing from publish output: $bridge"
 }
 
+if (-not $UseLegacyWpf) {
+    & (Join-Path $PSScriptRoot 'publish-work-status-bridge.ps1') -Runtime $Runtime -OutputDir (Join-Path $output 'work-status-bridge') -BuildArtifactsRoot $buildArtifacts
+    if ($LASTEXITCODE -ne 0) { throw 'WORK_STATUS_BRIDGE_PUBLISH_FAILED' }
+}
 Copy-AiUsageMonitorDistributionDocuments -ProjectRoot $projectRoot -OutputDir $output
 
 Write-Host "Published AI Usage Monitor to $output" -ForegroundColor Green

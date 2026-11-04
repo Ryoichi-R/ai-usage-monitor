@@ -30,4 +30,7 @@
     <Project Path="tests/support/AiUsageMonitor.FakeClaudeConsoleHelperHost/AiUsageMonitor.FakeClaudeConsoleHelperHost.csproj" />
     <Project Path="tests/support/AiUsageMonitor.TopmostTestHost/AiUsageMonitor.TopmostTestHost.csproj" />
   </Folder>
+  <Project Path="src/AiUsageMonitor.WorkStatus/AiUsageMonitor.WorkStatus.csproj" />
+  <Project Path="src/AiUsageMonitor.WorkStatus.Bridge/AiUsageMonitor.WorkStatus.Bridge.csproj" />
+  <Project Path="tests/AiUsageMonitor.WorkStatus.Tests/AiUsageMonitor.WorkStatus.Tests.csproj" />
 </Solution>

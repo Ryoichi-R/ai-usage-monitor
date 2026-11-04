@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\AiUsageMonitor.Core\AiUsageMonitor.Core.csproj" />
+    <ProjectReference Include="../AiUsageMonitor.WorkStatus/AiUsageMonitor.WorkStatus.csproj" />
     <ProjectReference Include="..\AiUsageMonitor.Claude\AiUsageMonitor.Claude.csproj" />
     <ProjectReference Include="..\AiUsageMonitor.Claude.Cli\AiUsageMonitor.Claude.Cli.csproj" />
     <ProjectReference Include="..\AiUsageMonitor.Codex\AiUsageMonitor.Codex.csproj" />

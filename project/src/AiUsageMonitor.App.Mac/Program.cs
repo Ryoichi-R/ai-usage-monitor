@@ -10,11 +10,20 @@ internal static class Program
 {
     internal static bool DemoMode { get; private set; }
 
-    internal static MacAppPathProvider Paths { get; } = new();
+    internal static MacAppPathProvider Paths { get; private set; } = new();
+    internal static bool WorkStatusOnly { get; private set; }
 
     [STAThread]
-    public static int Main(string[] args) =>
-        Run(args, Paths, arguments => BuildAvaloniaApp().StartWithClassicDesktopLifetime(arguments, ShutdownMode.OnExplicitShutdown));
+    public static int Main(string[] args)
+    {
+        if (args is ["--work-status-test-root", var root])
+        {
+            if (!Path.IsPathFullyQualified(root)) return 1;
+            Paths = new MacAppPathProvider(Path.GetFullPath(root));
+            WorkStatusOnly = true;
+        }
+        return Run(args, Paths, arguments => BuildAvaloniaApp().StartWithClassicDesktopLifetime(arguments, ShutdownMode.OnExplicitShutdown));
+    }
 
     internal static int Run(string[] args, MacAppPathProvider paths, Func<string[], int> start)
     {

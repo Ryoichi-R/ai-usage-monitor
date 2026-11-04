@@ -14,6 +14,7 @@ namespace AiUsageMonitor.App.UI.Hosting;
 /// </summary>
 public sealed class WidgetHostServices
 {
+    public bool WorkStatusOnly { get; init; }
     public required IAppPathProvider AppPaths { get; init; }
 
     /// <summary>ログイン時自動起動（設定の<c>StartWithWindows</c>）の適用先。</summary>

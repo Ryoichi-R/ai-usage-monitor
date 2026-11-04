@@ -20,6 +20,8 @@ public sealed record AppSettings
     public bool CodexMonetarySettingsInitialized { get; init; }
     public bool ShowCodexUsage { get; init; } = true;
     public IReadOnlyList<CodexAccountSettings> CodexAccounts { get; init; } = [CodexAccountSettings.Default];
+    public bool ShowCodexWorkStatus { get; init; }
+    public bool ShowClaudeWorkStatus { get; init; }
     public bool ShowClaudeUsage { get; init; }
     public ClaudeUsageAcquisitionMode ClaudeUsageAcquisitionMode { get; init; } = ClaudeUsageAcquisitionMode.Automatic;
     public string? ClaudeExecutablePath { get; init; }

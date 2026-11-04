@@ -32,6 +32,8 @@ public partial class SettingsWindow : Window
     internal const int CodexTabIndex = 3;
     internal const int VersionTabIndex = 5;
 
+    public event Action? WorkStatusSetupRequested;
+    private void OnWorkStatusSetupClick(object? sender, RoutedEventArgs e) => WorkStatusSetupRequested?.Invoke();
     public event Action<bool>? ClaudeCompatibilityRequested;
     private void OnClaudeRecheckClick(object? sender, RoutedEventArgs e) => ClaudeCompatibilityRequested?.Invoke(false);
     private void OnClaudeReleaseClick(object? sender, RoutedEventArgs e) => ClaudeCompatibilityRequested?.Invoke(true);
@@ -102,6 +104,8 @@ public partial class SettingsWindow : Window
         foreach (CodexAccountSettings account in settings.CodexAccounts)
             _codexAccounts.Add(new(account));
         CodexAccountsList.ItemsSource = _codexAccounts;
+        CodexWorkStatusBox.IsChecked = settings.ShowCodexWorkStatus;
+        ClaudeWorkStatusBox.IsChecked = settings.ShowClaudeWorkStatus;
         ShowClaudeBox.IsChecked = settings.ShowClaudeUsage;
         ClaudeModeChoice[] claudeModes =
         [
@@ -420,6 +424,8 @@ public partial class SettingsWindow : Window
         ShowCredits = ShowCreditsBox.IsChecked == true,
         CodexMonetarySettingsInitialized = true,
         CodexAccounts = _codexAccounts.Select(account => account.ToSettings()).ToArray(),
+        ShowCodexWorkStatus = CodexWorkStatusBox.IsChecked == true,
+        ShowClaudeWorkStatus = ClaudeWorkStatusBox.IsChecked == true,
         ShowClaudeUsage = ShowClaudeBox.IsChecked == true,
         ClaudeUsageAcquisitionMode = ClaudeModeBox.SelectedItem is ClaudeModeChoice mode
             ? mode.Value

@@ -207,6 +207,19 @@
                         VerticalScrollBarVisibility="Auto"
                         HorizontalScrollBarVisibility="Disabled">
             <StackPanel>
+              <StackPanel IsVisible="{Binding WorkStatus.IsVisible}">
+                <ItemsControl ItemsSource="{Binding WorkStatus.Rows}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:WorkStatusRowViewModel">
+                      <StackPanel IsVisible="{Binding IsVisible}" Margin="0,0,0,8">
+                        <TextBlock Text="{Binding Name}" FontSize="11" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding Status}" FontSize="11" TextWrapping="Wrap"/>
+                        <TextBlock Text="{Binding Detail}" IsVisible="{Binding HasDetail}" FontSize="10" TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}"/>
+                      </StackPanel>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
               <StackPanel x:Name="StandardContentPanel">
                 <TextBlock x:Name="CodexHeader" Text="CODEX" Height="0" Opacity="0"/>
                 <ItemsControl x:Name="CodexAccountsControl" ItemsSource="{Binding CodexAccounts}" IsVisible="{Binding ShowCodex}">

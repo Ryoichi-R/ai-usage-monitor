@@ -1,0 +1,61 @@
+# 作業状態監視（段階提供）
+
+対象はCodex DesktopとClaude Codeだけ。利用枠表示と作業状態表示は独立して有効にできる。初期設定はOFF。設定画面の「全体設定」で各作業状態を表示し、「作業状態の接続設定…」からプロジェクト単位の設定例を作成する。
+
+## 接続
+
+配布物にはwork-status-bridge/を同梱する。ソースからの単純なdotnet buildにはBridgeの配布物を自動作成せず、接続例を生成するにはpublishを使う。
+
+Codexは対象projectの.codex/hooks.jsonへhooksを限定追加して、本人がDesktopのReview hooksで確認する。Claudeは対象projectの.claude/settings.local.jsonへ限定追加する。既存のhooks・permissions・statusLineを置換しない。設定生成器が管理しているprojectでは、その生成器を使う。接続例の生成とコピーは設定ファイルの変更ではなく、実受信だけを接続の証拠とする。
+
+Claudeのexec formには実行ファイルとargsを渡す。onFailure=continueの条件として、Desktop内CLIの2.1.295以上を設定例生成時に指定する。Codexのcommand hookはシェル文字列のため、Windows標準PowerShellのEncodedCommandでpathを安全に渡す。PowerShell 7/pwshや開発用SDKは通常のhook実行には不要。
+
+WindowsのBridgeはWorkStatusBridges/v1/内容hashへ複製し、異なるビルドは別directoryに残す。Macは.app内を直接参照するため、.app移動時には再接続する。旧Bridgeの自動削除やフックの無断更新は行わない。
+
+今回の配布形式はself-contained。.NET SDKや共有runtimeの別途導入を不要にする。NativeAOTも比較ビルドしたが、既存CoreのJSON reflection利用にIL2026/IL3050が発生したため採用していない。AOT化のための既存設定保存処理の変更は別途扱う。
+
+## 状態と確認
+
+通常表示は作業中・入力待ち・応答終了だけとし、作業中だけは「作業中 3」のように半角スペースと件数を付ける。入力待ち/応答終了に件数は付けず、未確認、中断履歴、状態不明、確認ボタンを表示しない。現在の作業中/入力待ちを優先し、それらがなければ直近sessionのStopCandidate/Completedを応答終了と表示する。古い未確認通知の有無や確認操作に通常表示は連動しない。未受信、古い作業記録、中断後など、3状態を判断できない場合は「—」とする。取得・保存に実際に失敗した場合の説明は残す。応答終了は応答が止まった記録を示し、作業成功の判定ではない。内部のStopCandidateを確定完了へ昇格させず、後続の作業イベントで作業中へ戻す。無更新、CPU低下、プロセス終了、idle_promptから完了を推測しない。
+
+「確認済み」は押した時の通知だけに適用する。表示を消す、表示OFF、ウィジェットを隠す、終了する操作では未確認通知を消さない。クリック透過中は通知領域/メニューバーのprovider別確認操作を使う。
+
+## 保存と障害
+
+WorkStatus/state.jsonとevents/は既存アプリdata rootの配下。WindowsはLocalAppData/CodexUsageMonitor、MacはLibrary/Application Support/AiUsageMonitor。providerの利用枠・認証情報とは別のデータであり、PC間で同期しない。
+
+状態はversion 1。必須項目はVersion、Sessions、Notices、ProcessedIds、AcknowledgedIds、Imports。通知ID集合、sessionの最終順序、確認済みIDを保存し、再起動で確認済みを復活させない。処理済みspoolはsnapshotを原子的に保存した後に整理する。未知protocol/不正eventは採用・削除せず警告する。同じ不正fileはその起動中に再処理せず、読取失敗は待機して再試行する。
+
+event protocol 1の必須項目: Protocol、Id、Provider（CodexDesktop=0/ClaudeCode=3）、SessionId、TurnId、Kind、At（UTC）、DesktopVerified。OrderとCompletionRetractableは補助情報。session/turnはhashで、本文・ツール入力は含めない。
+
+Codexの質問カードはPreToolUseのrequest_user_input/request_user_input_asyncからQuestionOpenedを生成し、カード内の質問ごとにcall IDとindexのhashだけをQuestionIdsへ保存する。同期質問はPostToolUseで解除する。非同期質問のaccepted=trueは回答を意味しないため解除せず、UserPromptSubmitの構造化question replyにあるquestionItemIdと対応する質問だけを解除する。質問文・選択肢・回答内容は保存しない。別の通常メッセージ・ツール実行・Stop・通知の確認操作では未回答カードを消さない。SessionEndではそのsessionだけを閉じる。未回答のあるsessionは作業中件数へ加算せず入力待ちとして扱い、10分で自動解除しない。
+
+質問カードのtool名と構造化reply envelopeはCodex Desktopの互換性確認対象であり、公式hooks文書はこの専用経路の網羅を保証していない。形式が一致しない入力から回答済みを推測しない。Bridgeとアプリを同じ対応版へ更新して接続例を再適用し、本人のReview hooksと実カードの開閉の受信確認を終えるまで、実機対応済みとは扱わない。旧stateはQuestionIds関連の省略を空集合として読み込み、既存通知・確認IDを保持する。
+
+上限はstdin 4MiB、event 4KiB、state 8MiB、error.log 1MiB。容量超過やstateの破損・未知schema・保存失敗では作業状態だけを停止/警告し、原本を空状態で上書きしない。ログはUTC、例外型、HResult、引数値やファイル名を含まないstackだけ。例外message/Dataや本文は保存しない。一般設定のfallbackを通知stateへ流用しない。
+
+## 旧ウィジェットからの移行
+
+旧版を本人が通常終了し、接続設定画面の「単体版の未確認通知を引き継ぐ…」で旧state.jsonのあるdirectoryを選択する。旧monitor.lockを取得できない場合は引き継がない。旧stateをdata rootのlegacy-backupsへhash付きで保持してから、新しいsnapshotへ通知だけを取り込む。同じ旧snapshotの再移行はno-op。旧state/eventsは変更・削除しない。旧版の確認済み操作を代行しない。
+
+旧版へ戻す場合は、統合版を通常終了し、切替後に増えた通知と確認済み操作を確認してから接続先を戻す。古いbackupを単純に復元して新着を失わせない。逆変換による自動rollbackは未実装で、旧版と統合版のデータを保持して手動照合する。
+
+## 対応状況と検証
+
+Windowsの段階0では公式hooksの開始・停止候補を実証した。Macのprovenance/実受信、Windows/Macでの完全な完了検出、ARM64実機受入は残る。MacコードのコンパイルだけをMac実機で使える保証としない。
+
+要件と試験: 状態/通知/旧終端/確認競合はWorkStatusTests、入力の情報制限と接続例・移行・ログ上限はConnectionAndMigrationTests、利用枠と独立した表示/保存障害の分離はWorkStatusPresentationTests。既存の利用枠・配置・OS寿命管理は既存suiteを回帰する。
+
+## 開発時の隔離検証
+
+Windows/Macの実行物に `--work-status-test-root <絶対path>` を渡すと、指定directory配下だけに設定と作業状態を保存する。利用枠取得、自動起動の変更、通常profileの読取を行わず、両providerの作業状態を表示する。Windowsは `<root>/CodexUsageMonitor/WorkStatus`、Macは `<root>/Library/Application Support/AiUsageMonitor/WorkStatus`。このmodeの合成eventによる表示確認は、実Desktopからの受信やMac実機受入の代わりにはならない。
+
+workspace-controlの生成器を使うprojectでは、接続画面で作成・保存したClaude用の設定例を `-AiWorkStatusHooksPath <設定例の絶対path>` に指定する。本人が確認したBridgeと保存先の絶対pathを `-AiUsageMonitorBridgePath` と `-AiUsageMonitorDataPath` へ渡し、`-LocalOnly` で生成する。旧単体版からの切替時だけ `-ReplaceLegacyMonitorHooks` を明示する。削除対象は既知の旧Bridgeとargsに完全一致する監視hookだけで、他のhooksは保持する。通常の生成では切替を行わない。生成後は同じ引数の `-DryRun` と権限契約試験を実行する。
+
+## 自動受信と通知の確認
+
+プロジェクトの設定を適用し、Codexでは本人のレビューを終えた後は、作業開始・ツール実行・停止等のイベントを自動受信する。利用者が毎回接続操作をする必要はない。ウィジェットは保存されたイベントを2秒間隔で取り込み、未受信/受信履歴/接続保証の説明は通常画面に表示しない。初期状態の待機中は、特定のチャットの稼働や接続の証明を意味しない。
+
+中断/エラー/過去の状態記録とモニター独自の確認IDは保持するが、通常画面の表示対象にしない。必要な場合だけトレイのprovider別確認操作で保存済み通知を整理できる。Codex Desktopでの閲覧とは同期しないため、これを未読表示として使用しない。通常のSessionEndは待機へ移し、状態不明を増やさない。通常表示を簡略化しても、既存の状態・通知・確認済みIDを削除・自動確認しない。
+
+トレイの各providerの確認操作は、そのメニューの生成時に表示対象だったIDだけを確認する。WindowsのNativeMenu.Openingが発生しない経路にも対応する。確認対象のIDは保存成功後だけ確認済みにし、新たな到着、別provider、取得/保存失敗時の未確認通知を巻き込まない。

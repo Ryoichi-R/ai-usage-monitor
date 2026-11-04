@@ -50,6 +50,7 @@ public sealed class UsageViewModel : INotifyPropertyChanged
     private readonly Func<DateTimeOffset> _clock;
     private readonly TimeZoneInfo _timeZone;
 
+    public WorkStatusViewModel WorkStatus { get; } = new();
     public ProviderUsageViewModel Codex { get; }
     public ObservableCollection<CodexAccountViewModel> CodexAccounts { get; } = [];
     public ProviderUsageViewModel Claude { get; }

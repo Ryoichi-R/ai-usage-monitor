@@ -23,12 +23,14 @@ $project = Join-Path $root 'src/AiUsageMonitor.App.Mac/AiUsageMonitor.App.Mac.cs
 if ($LASTEXITCODE -ne 0) { throw 'PUBLISH_FAILED' }
 & dotnet publish (Join-Path $root 'src/AiUsageMonitor.Claude.Bridge.Mac/AiUsageMonitor.Claude.Bridge.Mac.csproj') -c Release -r osx-arm64 --self-contained true -o $macos --nologo -p:DebugType=None -p:DebugSymbols=false
 if ($LASTEXITCODE -ne 0) { throw 'BRIDGE_PUBLISH_FAILED' }
+& (Join-Path $PSScriptRoot 'publish-work-status-bridge.ps1') -Runtime osx-arm64 -OutputDir (Join-Path $macos 'work-status-bridge') -BuildArtifactsRoot (Join-Path $destination '.bridge-build')
+if ($LASTEXITCODE -ne 0) { throw 'WORK_STATUS_BRIDGE_PUBLISH_FAILED' }
 $buildInfo = Get-Content -LiteralPath (Join-Path $macos 'build-info.json') -Raw | ConvertFrom-Json
 $productVersion = [string]$buildInfo.Version
 if ($productVersion -notmatch '^\d+\.\d+\.\d+$') { throw 'INVALID_PRODUCT_VERSION' }
 $executable = Join-Path $macos 'AiUsageMonitor.App.Mac'
 $helper = Join-Path $macos 'ai-usage-process-supervisor'
-foreach ($binary in @($executable, $helper, (Join-Path $macos 'ai-usage-claude-statusline'))) {
+foreach ($binary in @($executable, $helper, (Join-Path $macos 'ai-usage-claude-statusline'), (Join-Path $macos 'work-status-bridge/ai-usage-work-status-bridge'))) {
     if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) { throw 'BINARY_MISSING' }
     & /usr/bin/lipo -verify_arch arm64 $binary
     if ($LASTEXITCODE -ne 0) { throw 'ARM64_BINARY_REQUIRED' }

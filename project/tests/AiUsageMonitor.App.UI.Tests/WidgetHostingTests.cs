@@ -1,6 +1,8 @@
 using AiUsageMonitor.App.UI.Hosting;
 using AiUsageMonitor.Core.Settings;
+using AiUsageMonitor.Core.WorkStatus;
 using AiUsageMonitor.Core.Usage;
+using AiUsageMonitor.WorkStatus;
 using AiUsageMonitor.Claude.Transport;
 using Avalonia.Controls;
 using PlacementMode = AiUsageMonitor.Core.Settings.PlacementMode;
@@ -215,6 +217,109 @@ public sealed class WidgetHostingTests
             await host.CompleteWelcomeAsync(false);
         }
         finally { Directory.Delete(root, true); }
+    }
+
+    [AvaloniaFact]
+    public async Task WorkStatusTrialIsDiscoverableAndClosesWithoutUsageOrStartupChanges()
+    {
+        string parent = Environment.GetEnvironmentVariable("AI_USAGE_MONITOR_TEST_ARTIFACTS_ROOT") ?? Path.GetTempPath();
+        string root = Path.Combine(parent, "work-status-trial", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var paths = new TestPaths(root);
+        var startup = new FakeStartup();
+        bool shutdown = false;
+        var services = new WidgetHostServices
+        {
+            AppPaths = paths,
+            WorkStatusOnly = true,
+            Startup = startup,
+            ShellOpener = new FakeShell(),
+            CreateLayerController = () => new FakeLayer(),
+            ClaudeSourceFactory = _ => throw new InvalidOperationException("Usage must stay disabled."),
+            CreateClaudeListener = () => throw new InvalidOperationException("Usage must stay disabled."),
+            ClaudeWorkspace = new AppPathClaudeWorkspace(paths),
+            ClaudeBridgePath = Path.Combine(root, "bridge"),
+            ReadmePath = Path.Combine(root, "README.md"),
+            UserProfile = root,
+        };
+        await using var host = new WidgetHost(services, () => shutdown = true);
+        await host.StartAsync();
+        Assert.True(host.Window!.ShowInTaskbar);
+        Assert.Equal(WindowDecorations.Full, host.Window.WindowDecorations);
+        Assert.Equal("AI Usage Monitor - 作業状態の隔離検証", host.Window.Title);
+        Assert.False(host.Settings.ShowCodexUsage);
+        Assert.False(host.Settings.ShowClaudeUsage);
+        Assert.True(host.Settings.ShowCodexWorkStatus);
+        Assert.True(host.Settings.ShowClaudeWorkStatus);
+        Assert.False(host.IsClaudeListening);
+        await host.ApplySavedSettingsAsync(host.Settings with { StartWithWindows = true }, false, false);
+        Assert.False(startup.Enabled);
+        host.Window.Close();
+        Assert.True(shutdown);
+    }
+
+    [AvaloniaFact]
+    public async Task TrayAcknowledgesWithoutOpeningAndKeepsAnOlderMenuSnapshot()
+    {
+        string parent = Environment.GetEnvironmentVariable("AI_USAGE_MONITOR_TEST_ARTIFACTS_ROOT") ?? AppContext.BaseDirectory;
+        string root = Path.Combine(parent, "work-tray", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        IAppPathProvider paths = new TestPaths(root);
+        var now = DateTimeOffset.UtcNow;
+        var model = new WorkStatusModel();
+        model.Apply(new(1, "interrupted", WorkProvider.CodexDesktop, "first", "t", WorkEventKind.Interrupted, now, true));
+        model.Sessions.Add(new(WorkProvider.CodexDesktop, "old", "t", WorkSessionState.Unknown, now, 1));
+        model.Apply(new(1, "claude", WorkProvider.ClaudeCode, "claude", "t", WorkEventKind.StopCandidate, now, true));
+        var store = new WorkStatusStore(paths.WorkStatusDirectory);
+        store.Save(model);
+        using var bitmap = new RenderTargetBitmap(new PixelSize(16, 16));
+        using var stream = new MemoryStream();
+        bitmap.Save(stream, PngBitmapEncoderOptions.Default);
+        stream.Position = 0;
+        var services = new WidgetHostServices
+        {
+            AppPaths = paths,
+            WorkStatusOnly = true,
+            Startup = new FakeStartup(),
+            ShellOpener = new FakeShell(),
+            CreateLayerController = () => new FakeLayer(),
+            ClaudeSourceFactory = _ => throw new InvalidOperationException("No usage probes."),
+            CreateClaudeListener = () => throw new InvalidOperationException("No usage probes."),
+            ClaudeWorkspace = new AppPathClaudeWorkspace(paths),
+            ClaudeBridgePath = Path.Combine(root, "bridge"),
+            ReadmePath = Path.Combine(root, "README.md"),
+            UserProfile = root,
+            StatusIcon = new WindowIcon(stream),
+        };
+        await using var host = new WidgetHost(services, () => { });
+        await host.StartAsync();
+        NativeMenu firstMenu = Assert.IsType<NativeMenu>(host.TrayMenu);
+        NativeMenuItem item = Assert.Single(firstMenu.Items.OfType<NativeMenuItem>(), i => i.Header == "Codex Desktopの通知を確認済みにする");
+        Assert.Equal(2, Assert.IsAssignableFrom<IReadOnlyList<string>>(item.CommandParameter).Count);
+        Assert.True(item.Command!.CanExecute(item.CommandParameter));
+        WorkStatusCollector.WriteEvent(paths.WorkStatusDirectory,
+            new(1, "new", WorkProvider.CodexDesktop, "new", "t", WorkEventKind.Interrupted, now.AddMilliseconds(1), true));
+        await WaitForAsync(() => host.ViewModel!.WorkStatus.Rows[0].NoticeIds.Count == 3);
+        Assert.NotSame(firstMenu, host.TrayMenu);
+        // The Win32 presenter invokes the command without NativeMenu.Opening.
+        item.Command.Execute(item.CommandParameter);
+        await WaitForAsync(() => store.Load().AcknowledgedIds.Count == 2);
+        WorkStatusModel saved = store.Load();
+        WorkStatusSummary codex = saved.Summarize(WorkProvider.CodexDesktop, DateTimeOffset.UtcNow, true);
+        Assert.Equal(0, codex.Unknown);
+        Assert.Equal("new", Assert.Single(codex.Notices).SessionId);
+        Assert.Equal(1, saved.Summarize(WorkProvider.ClaudeCode, DateTimeOffset.UtcNow, true).Candidates);
+    }
+
+    private static async Task WaitForAsync(Func<bool> condition)
+    {
+        for (int attempt = 0; attempt < 250; attempt++)
+        {
+            Dispatcher.UIThread.RunJobs();
+            if (condition()) return;
+            await Task.Delay(20);
+        }
+        Assert.True(condition(), "The asynchronous work-state operation did not finish.");
     }
 
     private sealed class FakeListener : IClaudeUsageListener

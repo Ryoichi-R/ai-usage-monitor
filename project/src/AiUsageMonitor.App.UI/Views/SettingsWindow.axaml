@@ -67,6 +67,10 @@
             <CheckBox x:Name="ClickThroughBox" Content="クリックを透過する"/>
             <CheckBox x:Name="TopmostBox" Content="常に手前に表示する"/>
             <CheckBox x:Name="StartupBox" Content="Windowsログオン時に自動起動する"/>
+            <CheckBox x:Name="CodexWorkStatusBox" Content="Codex Desktopの作業状態を表示する"/>
+            <CheckBox x:Name="ClaudeWorkStatusBox" Content="Claude Codeの作業状態を表示する"/>
+            <Button Content="作業状態の接続設定…" Click="OnWorkStatusSetupClick" Margin="4,5"/>
+            <TextBlock Classes="hint" Text="利用枠とは別の接続設定です。表示を外しても未確認通知は消えません。"/>
             <Grid Classes="field" Margin="4,14,4,3" ColumnDefinitions="210,*">
               <TextBlock Text="表示モード" VerticalAlignment="Center"/>
               <ComboBox x:Name="DisplayModeBox" Grid.Column="1" HorizontalAlignment="Stretch"

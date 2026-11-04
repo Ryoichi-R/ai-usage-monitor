@@ -2,6 +2,8 @@
 
 このディレクトリは、AI Usage Monitorの公開判定と成果物の扱いを定義します。バイナリ本体はここへ保存しません。
 
+開発中のソース公開は`Experimental`として扱い、確認済みの範囲と未完成・未検証のOSをREADMEに記載します。ソース公開の完了を、実行ファイルの配布や各OSでの実機受入完了として扱いません。
+
 ## 3つのプロファイル
 
 - `source-repository`: source、tests、scripts、文書のみ。`project/artifacts/`の生成物は候補から除外します。

@@ -19,14 +19,23 @@ internal static class Program
 {
     internal const string ActivationName = "Local\\AiUsageMonitor-Activate-5C898151";
 
+    internal static string? IsolatedRoot { get; private set; }
+    internal static string CurrentActivationName => IsolatedRoot is null ? ActivationName : ActivationName + "-WorkStatus-" + AiUsageMonitor.WorkStatus.HookNormalizer.Digest(IsolatedRoot);
+
     [STAThread]
     public static int Main(string[] args)
     {
         if (ClaudeConsoleHelper.TryHandle(args, Console.Out)) return 0;
-        using var instance = new WindowsSingleInstanceGuard("Local\\CodexUsageMonitor-5C898151");
+        if (args is ["--work-status-test-root", var root])
+        {
+            if (!Path.IsPathFullyQualified(root)) return 1;
+            IsolatedRoot = Path.GetFullPath(root);
+        }
+        string instanceName = IsolatedRoot is null ? "Local\\CodexUsageMonitor-5C898151" : CurrentActivationName + "-instance";
+        using var instance = new WindowsSingleInstanceGuard(instanceName);
         if (!instance.TryAcquire())
         {
-            WindowsInstanceActivationChannel.TrySignal(ActivationName);
+            WindowsInstanceActivationChannel.TrySignal(CurrentActivationName);
             return 0;
         }
         return AppBuilder.Configure<WindowsApp>().UsePlatformDetect()
@@ -42,7 +51,7 @@ internal sealed class WindowsApp : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            var lifecycle = WindowsProductLifecycle.Start(() => desktop.Shutdown(), WindowsComposition.Create(), Program.ActivationName);
+            var lifecycle = WindowsProductLifecycle.Start(() => desktop.Shutdown(), WindowsComposition.Create(Program.IsolatedRoot), Program.CurrentActivationName);
             desktop.ShutdownRequested += (_, e) => lifecycle.OnShutdownRequested(e);
         }
         base.OnFrameworkInitializationCompleted();
@@ -51,17 +60,20 @@ internal sealed class WindowsApp : Application
 
 internal static class WindowsComposition
 {
-    internal static WidgetHostServices Create()
+    internal static WidgetHostServices Create(string? testRoot = null)
     {
-        var paths = new WindowsAppPathProvider();
+        var paths = testRoot is null ? new WindowsAppPathProvider() : new WindowsAppPathProvider(testRoot);
         string directory = AppContext.BaseDirectory;
         var guards = new WindowsProcessLifetimeGuardFactory();
         var diagnostics = new WindowsDiagnosticLog(Path.Combine(Path.GetDirectoryName(paths.SettingsFilePath)!, "diagnostics.log"));
         return new WidgetHostServices
         {
             AppPaths = paths,
+            WorkStatusOnly = testRoot is not null,
+            UserProfile = testRoot ?? paths.UserHomeDirectory,
+            InheritedCodexHome = testRoot is null ? Environment.GetEnvironmentVariable("CODEX_HOME") : null,
             Diagnostic = diagnostics.Write,
-            Startup = new WindowsStartupService(),
+            Startup = testRoot is null ? new WindowsStartupService() : new AiUsageMonitor.Platform.NoStartupService(),
             ShellOpener = new WindowsShellOpener(),
             CreateLayerController = () => new WindowsWidgetLayerController(),
             ClaudeWorkspace = new AiUsageMonitor.Claude.Windows.Process.ClaudeWorkspaceProvisioner(paths),
