@@ -10,10 +10,12 @@ public sealed record WorkStatusEvent([property: JsonRequired] int Protocol, [pro
     [property: JsonRequired] WorkProvider Provider, [property: JsonRequired] string SessionId,
     [property: JsonRequired] string TurnId, [property: JsonRequired] WorkEventKind Kind,
     [property: JsonRequired] DateTimeOffset At, [property: JsonRequired] bool DesktopVerified,
-    long Order = 0, bool CompletionRetractable = false, string[]? QuestionIds = null);
+    long Order = 0, bool CompletionRetractable = false, string[]? QuestionIds = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool? InputPending = null);
 public sealed record WorkQuestion(string SessionId, string Id);
 public sealed record WorkSession(WorkProvider Provider, string SessionId, string TurnId,
-    WorkSessionState State, DateTimeOffset At, long Order, bool CompletionRetractable = false);
+    WorkSessionState State, DateTimeOffset At, long Order, bool CompletionRetractable = false,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool InputPending = false);
 public sealed record WorkNotice(string Id, WorkProvider Provider, string SessionId, string TurnId,
     WorkSessionState State, DateTimeOffset At);
 public sealed record WorkStatusSummary(int Running, int Waiting, int Unknown, int Completed,
@@ -39,6 +41,8 @@ public sealed class WorkStatusModel
         Enum.IsDefined(value.Provider) && Enum.IsDefined(value.Kind) &&
         value.Id is { Length: > 0 and <= 240 } && value.SessionId is { Length: > 0 and <= 160 } &&
         value.TurnId is { Length: <= 160 } && value.At.Offset == TimeSpan.Zero &&
+        (value.InputPending is null || value.Provider == WorkProvider.ClaudeCode &&
+            (value.InputPending.Value ? value.Kind == WorkEventKind.Waiting : value.Kind == WorkEventKind.Activity)) &&
         (value.QuestionIds is null || value.Provider == WorkProvider.CodexDesktop &&
             value.Kind is WorkEventKind.Started or WorkEventKind.QuestionOpened or WorkEventKind.QuestionAnswered && value.QuestionIds.Length <= 16 &&
             value.QuestionIds.All(id => id is { Length: 24 } && id.All(char.IsAsciiHexDigit))) &&
@@ -94,6 +98,11 @@ public sealed class WorkStatusModel
             WorkEventKind.Ended => WorkSessionState.Idle,
             _ => WorkSessionState.Unknown,
         };
+        // Only the exact question outcome clears an explicit Claude input wait.
+        // Unrelated tool activity or repeated permission notifications are not an answer.
+        bool inputPending = value.Kind is WorkEventKind.Waiting or WorkEventKind.Activity &&
+            (value.InputPending ?? previous?.InputPending ?? false);
+        if (inputPending) state = WorkSessionState.Waiting;
         if (value.Kind == WorkEventKind.Ended && value.Provider == WorkProvider.CodexDesktop)
         {
             foreach (WorkQuestion question in PendingQuestions.Where(q => q.SessionId == value.SessionId))
@@ -105,7 +114,7 @@ public sealed class WorkStatusModel
                 (n.State == WorkSessionState.StopCandidate || value.Kind == WorkEventKind.Activity &&
                     previous?.CompletionRetractable == true && n.TurnId == turn && n.State == WorkSessionState.Completed));
         var session = new WorkSession(value.Provider, value.SessionId, turn, state, value.At,
-            value.Order, value.Kind == WorkEventKind.Completed && value.CompletionRetractable);
+            value.Order, value.Kind == WorkEventKind.Completed && value.CompletionRetractable, inputPending);
         if (index >= 0) Sessions[index] = session; else Sessions.Add(session);
         if (state is WorkSessionState.Completed or WorkSessionState.Interrupted or WorkSessionState.Failed or WorkSessionState.StopCandidate)
         {
@@ -132,7 +141,8 @@ public sealed class WorkStatusModel
     public WorkStatusSummary Summarize(WorkProvider provider, DateTimeOffset now, bool available)
     {
         WorkSession[] sessions = [.. Sessions.Where(s => s.Provider == provider)];
-        bool Fresh(WorkSession session) => available && now - session.At < TimeSpan.FromMinutes(10);
+        bool Fresh(WorkSession session) => available &&
+            (session.InputPending || now - session.At < TimeSpan.FromMinutes(10));
         bool QuestionPending(WorkSession session) => provider == WorkProvider.CodexDesktop &&
             PendingQuestions.Any(q => q.SessionId == session.SessionId);
         WorkNotice[] notices = [.. Notices.Where(n => n.Provider == provider)];

@@ -39,6 +39,15 @@ pwsh -NoProfile -File scripts/publish-ai-usage-monitor.ps1 -Runtime win-arm64
 
 出力はproject/artifacts/win-x64またはwin-arm64です。既に利用中の版を更新するときは、READMEの通常終了・backup付きrebuild手順に従います。
 
+稼働中の版を保持したままARM64候補を検証するときは、新規のstaging出力先を指定します。leaf名はスクリプトが許可する小文字32桁GUIDの形式に従います。
+
+```powershell
+$arm64Output = "artifacts/.staging-ai-usage-monitor-win-arm64-" + [guid]::NewGuid().ToString("N")
+pwsh -NoProfile -File scripts/publish-ai-usage-monitor.ps1 -Runtime win-arm64 -OutputDir $arm64Output
+```
+
+通常版へ切り替える際は、稼働中の版を通常終了し、配布物・設定・既存state・変更対象hookをバックアップします。新しい候補の設定や合成試験の履歴で通常profileを上書きせず、採用する候補のhashと接続先を確認します。自動起動の登録先が変わる移動やproject hookの変更は、切替内容を利用者と確認してから実施します。Codexの更新後hookは本人のReview hooksが必要です。
+
 MacではMac上でビルドします。
 
 ```powershell
@@ -61,3 +70,9 @@ pwsh -NoProfile -File scripts/publish-ai-usage-monitor-macos.ps1
 - ARM64では「バージョン情報」の実行アーキテクチャと、外部CLIを含む対象環境。
 
 未実行項目を成功扱いせず、既存の状態ファイルを削除して検証を通しません。対象候補そのものの実機受入が終わるまでは、[公開方針](../../release/README.md)のbinary-local-onlyとして扱います。
+
+## 検証記録と候補の対応
+
+自動テスト、合成イベントの表示、実Desktopからの受信、利用枠の実取得、本人による画面確認を別々に記録します。OS/CPU、OSとSDK・CLI・アプリそれぞれの実行アーキテクチャ、branch/commitと未コミット変更、候補とBridgeのSHA-256、実行コマンド、テスト件数・coverage・失敗/skip、確認済み/未実施の項目を含めます。詳細はGit追跡対象外の`project/.work/`等へ保存し、認証情報・会話/応答本文・tool入力・利用枠の生応答を記録しません。
+
+複数候補で試験した場合は項目ごとに候補を対応付け、過去の結果を異なるhashへ自動継承しません。通常版への切替後は、同じ通常profileでの利用枠・設定保持・実フック受信を確認し、隔離版の結果とは区別します。現在のWindows ARM64の確認範囲と未実施項目は[作業状態の検証状況](work-status.md#対応状況と検証)を参照してください。

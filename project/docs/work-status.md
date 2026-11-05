@@ -28,7 +28,11 @@ WorkStatus/state.jsonとevents/は既存アプリdata rootの配下。Windowsは
 
 event protocol 1の必須項目: Protocol、Id、Provider（CodexDesktop=0/ClaudeCode=3）、SessionId、TurnId、Kind、At（UTC）、DesktopVerified。OrderとCompletionRetractableは補助情報。session/turnはhashで、本文・ツール入力は含めない。
 
+CodexはPreModelRequestも明示的な作業開始として受ける。新規チャットの初期送信でUserPromptSubmitやtoolイベントが届かない経路でも、モデル要求開始の受信後に作業中へ移せる。SessionStartだけでは作業中にしない。モデル要求の完了はturn全体の完了を意味しないためPostModelRequestでは応答終了へ移さず、Stop等の既存経路を維持する。model/session/turnのメタデータ以外の要求・応答・エラー本文は保存せず、subagent/未検証由来は既存の規則で除外する。未回答Codexカードはモデル要求が始まっても解除しない。更新したBridgeと設定例への切替後、本人のReview hooksと実受信を確認するまでは、この経路の実機受入済みとはしない。
+
 Codexの質問カードはPreToolUseのrequest_user_input/request_user_input_asyncからQuestionOpenedを生成し、カード内の質問ごとにcall IDとindexのhashだけをQuestionIdsへ保存する。同期質問はPostToolUseで解除する。非同期質問のaccepted=trueは回答を意味しないため解除せず、UserPromptSubmitの構造化question replyにあるquestionItemIdと対応する質問だけを解除する。質問文・選択肢・回答内容は保存しない。別の通常メッセージ・ツール実行・Stop・通知の確認操作では未回答カードを消さない。SessionEndではそのsessionだけを閉じる。未回答のあるsessionは作業中件数へ加算せず入力待ちとして扱い、10分で自動解除しない。
+
+Claude Codeのメインsessionでtool名が正確にAskUserQuestionであるPreToolUseを受信すると、既存の入力待ち状態へ移す。PostToolUse、または同じtoolのPostToolUseFailureを受信すると作業中へ戻す。応答終了への遷移はStopで別に判断する。質問文・選択肢・回答・エラー本文は参照/保存しない。失敗hookの設定例はAskUserQuestionだけをmatcherで対象とし、onFailure=continueを維持する。toolの開始前に拒否された場合など、公式CLIがPostToolUseFailureを発火しない経路まで解除を保証しない。このClaudeの待機判定は既存のWaiting/Activityを使い、Codexの未回答カード集合とは独立している。共通normalizerの変更はMac/Windows x64にも適用されるが、ARM64上の合成試験をそれらの実機受入には流用しない。公式hook仕様は https://code.claude.com/docs/en/hooks を参照する。
 
 質問カードのtool名と構造化reply envelopeはCodex Desktopの互換性確認対象であり、公式hooks文書はこの専用経路の網羅を保証していない。形式が一致しない入力から回答済みを推測しない。Bridgeとアプリを同じ対応版へ更新して接続例を再適用し、本人のReview hooksと実カードの開閉の受信確認を終えるまで、実機対応済みとは扱わない。旧stateはQuestionIds関連の省略を空集合として読み込み、既存通知・確認IDを保持する。
 
@@ -42,15 +46,21 @@ Codexの質問カードはPreToolUseのrequest_user_input/request_user_input_asy
 
 ## 対応状況と検証
 
-Windowsの段階0では公式hooksの開始・停止候補を実証した。Macのprovenance/実受信、Windows/Macでの完全な完了検出、ARM64実機受入は残る。MacコードのコンパイルだけをMac実機で使える保証としない。
+2026-11-05、Windows 11 ARM64の開発候補で、本体・Bridge・ネイティブ依存のARM64動作、両providerの利用枠取得、通常版への切替と既存設定の保持を確認した。切替後の通常保存先でも、Codex DesktopとClaude Codeそれぞれから開始・入力待ち・回答後の解除・停止候補を実受信し、応答終了表示は本人が確認した。x64エミュレーションだけの成功をARM64受入には含めない。
+
+隔離した候補では、Codexの実並列3セッション、Claudeの12分を超える入力待ちと監視アプリ再起動後の保持、標準/縮小表示、設定保存・キャンセル、トレイ操作などを確認した。項目ごとに試験した候補を区別しており、すべてを最終バイナリで再試験したものではない。合成イベントの表示確認と実Desktop受信、利用枠の実取得も別々に記録する。
+
+この結果は、特定の開発候補と実機・CLI構成に限る。通常版切替後にも、実並列3セッションの作業中件数と、Claudeの12分超の未回答保持・回答後の解除・応答終了を確認した。通常版の長時間待ち中の再起動、複数モニターや別のOS表示倍率、同じ変更のWindows x64/Mac実機回帰は未実施。Macのprovenance/実受信と実機受入も残る。Windows/Macでの完全な完了検出は未提供であり、応答終了表示で作業成功を保証しない。MacコードのコンパイルだけをMac実機で使える保証としない。
+
+詳細な検証記録・画面証跡・候補ごとのSHA-256・版・残項目はGit追跡対象外のローカル成果物へ保持する。公開済み基準commit単体、異なるhashの候補、別PCへ結果を自動継承しない。通常運用への切替はbinary公開の承認を意味せず、配布候補の扱いは[公開方針](../../release/README.md)に従う。
 
 要件と試験: 状態/通知/旧終端/確認競合はWorkStatusTests、入力の情報制限と接続例・移行・ログ上限はConnectionAndMigrationTests、利用枠と独立した表示/保存障害の分離はWorkStatusPresentationTests。既存の利用枠・配置・OS寿命管理は既存suiteを回帰する。
 
 ## 開発時の隔離検証
 
-Windows/Macの実行物に `--work-status-test-root <絶対path>` を渡すと、指定directory配下だけに設定と作業状態を保存する。利用枠取得、自動起動の変更、通常profileの読取を行わず、両providerの作業状態を表示する。Windowsは `<root>/CodexUsageMonitor/WorkStatus`、Macは `<root>/Library/Application Support/AiUsageMonitor/WorkStatus`。このmodeの合成eventによる表示確認は、実Desktopからの受信やMac実機受入の代わりにはならない。
+Windows/Macの実行物に `--work-status-test-root <絶対path>` を渡すと、指定directory配下だけに設定と作業状態を保存する。利用枠取得、自動起動の変更、通常profileの読取を行わず、両providerの作業状態を表示する。Windowsは `<root>/CodexUsageMonitor/WorkStatus`、Macは `<root>/Library/Application Support/AiUsageMonitor/WorkStatus`。このmodeの合成eventによる表示確認は、実Desktopからの受信やMac実機受入の代わりにはならない。 隔離検証中のトレイ名は「AI Usage Monitor（隔離検証）」、設定画面は「AI Usage Monitor 設定 - 隔離検証」とし、設定画面もタスクバーへ表示して通常版との取り違えを防ぐ。この識別は共通hostの隔離mode限定で、通常版のトレイ名と設定画面のタスクバー非表示は維持する。 多重起動からの再表示通知では、非表示に加えて最小化されたwidgetも通常状態へ戻す。表示中の通常widgetに通知を繰り返しても、配置やnative layerを再作成しない。
 
-workspace-controlの生成器を使うprojectでは、接続画面で作成・保存したClaude用の設定例を `-AiWorkStatusHooksPath <設定例の絶対path>` に指定する。本人が確認したBridgeと保存先の絶対pathを `-AiUsageMonitorBridgePath` と `-AiUsageMonitorDataPath` へ渡し、`-LocalOnly` で生成する。旧単体版からの切替時だけ `-ReplaceLegacyMonitorHooks` を明示する。削除対象は既知の旧Bridgeとargsに完全一致する監視hookだけで、他のhooksは保持する。通常の生成では切替を行わない。生成後は同じ引数の `-DryRun` と権限契約試験を実行する。
+設定生成器で管理されているプロジェクトでは、接続画面で作成した設定例を生成入力へ追加し、そのプロジェクトの正規手順で適用する。既存permissions・他hooks・statusLineを保持し、適用前のバックアップと差分をローカルへ保存する。生成器が対応する場合は、適用前後のDryRunや権限契約試験で追加内容と既存設定の保持を確認する。旧単体版や別Bridgeの監視hookがある場合は、旧設定と保存データを保持して切替内容を確認し、重複接続を避ける。生成器固有の引数や自動置換機能の対応は、そのプロジェクトの手順に従う。
 
 ## 自動受信と通知の確認
 
@@ -59,3 +69,10 @@ workspace-controlの生成器を使うprojectでは、接続画面で作成・�
 中断/エラー/過去の状態記録とモニター独自の確認IDは保持するが、通常画面の表示対象にしない。必要な場合だけトレイのprovider別確認操作で保存済み通知を整理できる。Codex Desktopでの閲覧とは同期しないため、これを未読表示として使用しない。通常のSessionEndは待機へ移し、状態不明を増やさない。通常表示を簡略化しても、既存の状態・通知・確認済みIDを削除・自動確認しない。
 
 トレイの各providerの確認操作は、そのメニューの生成時に表示対象だったIDだけを確認する。WindowsのNativeMenu.Openingが発生しない経路にも対応する。確認対象のIDは保存成功後だけ確認済みにし、新たな到着、別provider、取得/保存失敗時の未確認通知を巻き込まない。
+
+### Claudeの長時間入力待ち
+
+公式`AskUserQuestion`の開始を検出した場合だけ、省略可能な`InputPending`をevent/sessionへ保存し、回答成功または失敗、明示的な停止・session終了・次のpromptまで入力待ちを保持する。質問文・選択肢・回答・tool入力はこのmarkerへ保存しない。無関係なtool活動や再通知だけでは回答済みとしない。通常のRunning、権限待ち、旧snapshotのmarkerなしWaitingは従来の10分鮮度を維持する。取得元が利用不能な場合は入力待ちを保証しない。
+
+markerは既存version 1の省略可能fieldで、旧snapshotを削除・初期化せず読み込める。markerなしの過去Waitingから質問を推測して変換しない。共通model/normalizerの変更はMacとWindows x64にも適用されるが、このWindows ARM64 PCの検証を他OSの実機受入とはしない。
+隔離modeで「Claude Code連携…」を開いても、利用枠の表示を有効化したり、設定を保存したりしない。接続テストを無効にして取得delegateを渡さず、実CLIの取得は開始しない。通常modeでのClaude連携設定手順は維持する。

@@ -128,13 +128,20 @@ public sealed class WidgetHostingTests
             Assert.True(host.Window.IsVisible);
             host.ToggleWidgetVisibility();
             host.ShowWidget();
+            host.Window.WindowState = WindowState.Minimized;
+            host.ShowWidget();
+            Assert.Equal(WindowState.Normal, host.Window.WindowState);
+            Assert.True(host.Window.IsVisible);
             Assert.Equal(1, layers[0].AttachCalls);
             // WPF版と同じく、常駐アイコンは1回のクリックでは何もせず、ダブルクリックで設定を開く。
             host.OnTrayClicked();
             Assert.Null(host.OpenSettingsWindow);
             host.OnTrayClicked();
             Assert.NotNull(host.OpenSettingsWindow);
-            host.OpenSettingsWindow!.Close();
+            Assert.False(host.OpenSettingsWindow!.ShowInTaskbar);
+            Assert.Equal("AI Usage Monitor 設定", host.OpenSettingsWindow.Title);
+            Assert.Equal("AI Usage Monitor", host.TrayToolTip());
+            host.OpenSettingsWindow.Close();
             Assert.Null(host.OpenSettingsWindow);
             host.ShowSettings();
             Assert.NotNull(host.OpenSettingsWindow);
@@ -245,6 +252,15 @@ public sealed class WidgetHostingTests
         await using var host = new WidgetHost(services, () => shutdown = true);
         await host.StartAsync();
         Assert.True(host.Window!.ShowInTaskbar);
+        Assert.Equal("AI Usage Monitor（隔離検証）", host.TrayToolTip());
+        host.Window.WindowState = WindowState.Minimized;
+        host.ShowWidget();
+        Assert.Equal(WindowState.Normal, host.Window.WindowState);
+        Assert.True(host.Window.IsVisible);
+        host.ShowSettings();
+        Assert.True(host.OpenSettingsWindow!.ShowInTaskbar);
+        Assert.Equal("AI Usage Monitor 設定 - 隔離検証", host.OpenSettingsWindow.Title);
+        host.OpenSettingsWindow.Close();
         Assert.Equal(WindowDecorations.Full, host.Window.WindowDecorations);
         Assert.Equal("AI Usage Monitor - 作業状態の隔離検証", host.Window.Title);
         Assert.False(host.Settings.ShowCodexUsage);
@@ -252,6 +268,22 @@ public sealed class WidgetHostingTests
         Assert.True(host.Settings.ShowCodexWorkStatus);
         Assert.True(host.Settings.ShowClaudeWorkStatus);
         Assert.False(host.IsClaudeListening);
+        using (var savedSettings = new FileSystemSettingsStore(paths.SettingsFilePath))
+            await savedSettings.SaveAsync(host.Settings);
+        byte[] beforeSetup = File.ReadAllBytes(paths.SettingsFilePath);
+        host.ShowClaudeSetup();
+        await WaitForAsync(() => host.OpenClaudeSetupWindow is not null);
+        Assert.False(host.Settings.ShowClaudeUsage);
+        Assert.False(host.ViewModel!.ShowClaude);
+        Assert.Equal("Claude Code連携 - 隔離検証", host.OpenClaudeSetupWindow!.Title);
+        Assert.True(host.OpenClaudeSetupWindow.ShowInTaskbar);
+        Assert.False(host.OpenClaudeSetupWindow.TestConnectionButton.IsEnabled);
+        await host.OpenClaudeSetupWindow.TestConnectionAsync();
+        Assert.False(host.IsClaudeListening);
+        Assert.Equal(beforeSetup, File.ReadAllBytes(paths.SettingsFilePath));
+        host.OpenClaudeSetupWindow.Close();
+        await host.RequestRefreshAsync();
+        Assert.False(host.ViewModel.ShowClaude);
         await host.ApplySavedSettingsAsync(host.Settings with { StartWithWindows = true }, false, false);
         Assert.False(startup.Enabled);
         host.Window.Close();
@@ -270,6 +302,7 @@ public sealed class WidgetHostingTests
         model.Apply(new(1, "interrupted", WorkProvider.CodexDesktop, "first", "t", WorkEventKind.Interrupted, now, true));
         model.Sessions.Add(new(WorkProvider.CodexDesktop, "old", "t", WorkSessionState.Unknown, now, 1));
         model.Apply(new(1, "claude", WorkProvider.ClaudeCode, "claude", "t", WorkEventKind.StopCandidate, now, true));
+        var codes = new System.Collections.Concurrent.ConcurrentQueue<string>();
         var store = new WorkStatusStore(paths.WorkStatusDirectory);
         store.Save(model);
         using var bitmap = new RenderTargetBitmap(new PixelSize(16, 16));
@@ -290,6 +323,7 @@ public sealed class WidgetHostingTests
             ReadmePath = Path.Combine(root, "README.md"),
             UserProfile = root,
             StatusIcon = new WindowIcon(stream),
+            Diagnostic = (code, error) => codes.Enqueue(code + ":" + error?.GetType().Name + ":" + error?.HResult),
         };
         await using var host = new WidgetHost(services, () => { });
         await host.StartAsync();
@@ -302,8 +336,12 @@ public sealed class WidgetHostingTests
         await WaitForAsync(() => host.ViewModel!.WorkStatus.Rows[0].NoticeIds.Count == 3);
         Assert.NotSame(firstMenu, host.TrayMenu);
         // The Win32 presenter invokes the command without NativeMenu.Opening.
+        Assert.Equal(2, Assert.IsAssignableFrom<IReadOnlyList<string>>(item.CommandParameter).Count);
+        bool requested = false;
+        host.ViewModel!.WorkStatus.Rows[0].AcknowledgeRequested += _ => requested = true;
         item.Command.Execute(item.CommandParameter);
-        await WaitForAsync(() => store.Load().AcknowledgedIds.Count == 2);
+        Assert.True(requested, "The retained menu command must dispatch acknowledgement.");
+        await WaitForAsync(() => store.Load().AcknowledgedIds.Count == 2, () => string.Join(",", codes));
         WorkStatusModel saved = store.Load();
         WorkStatusSummary codex = saved.Summarize(WorkProvider.CodexDesktop, DateTimeOffset.UtcNow, true);
         Assert.Equal(0, codex.Unknown);
@@ -311,7 +349,7 @@ public sealed class WidgetHostingTests
         Assert.Equal(1, saved.Summarize(WorkProvider.ClaudeCode, DateTimeOffset.UtcNow, true).Candidates);
     }
 
-    private static async Task WaitForAsync(Func<bool> condition)
+    private static async Task WaitForAsync(Func<bool> condition, Func<string>? details = null)
     {
         for (int attempt = 0; attempt < 250; attempt++)
         {
@@ -319,7 +357,7 @@ public sealed class WidgetHostingTests
             if (condition()) return;
             await Task.Delay(20);
         }
-        Assert.True(condition(), "The asynchronous work-state operation did not finish.");
+        Assert.True(condition(), "The asynchronous work-state operation did not finish. " + details?.Invoke());
     }
 
     private sealed class FakeListener : IClaudeUsageListener

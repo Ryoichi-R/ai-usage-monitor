@@ -10,8 +10,24 @@ using Avalonia.VisualTree;
 
 namespace AiUsageMonitor.App.UI.Tests;
 
-public sealed class WorkStatusPresentationTests
+public sealed partial class WorkStatusPresentationTests
 {
+    [Fact]
+    public void ExplicitClaudeQuestionKeepsTheNormalInputWaitingTextAfterTwelveHours()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var model = new WorkStatusModel();
+        model.Apply(new(1, "claude-question", WorkProvider.ClaudeCode, "synthetic-long-wait", "turn",
+            WorkEventKind.Waiting, now, true, InputPending: true));
+        var view = new WorkStatusViewModel();
+        view.Update(model, true, true, null, now.AddHours(12));
+        Assert.Equal("入力待ち", view.Rows[1].Status);
+        Assert.False(view.Rows[1].HasDetail);
+        model.Apply(new(1, "claude-answer", WorkProvider.ClaudeCode, "synthetic-long-wait", "turn",
+            WorkEventKind.Activity, now.AddHours(12), true, InputPending: false));
+        view.Update(model, true, true, null, now.AddHours(12));
+        Assert.Equal("作業中 1", view.Rows[1].Status);
+    }
     [Fact]
     public void PendingCodexQuestionIsWaitingAndExcludedFromWorkingCount()
     {
@@ -23,10 +39,10 @@ public sealed class WorkStatusPresentationTests
             now.AddSeconds(1), true, QuestionIds: ["0123456789ABCDEF01234567"]));
         var view = new WorkStatusViewModel();
         view.Update(model, true, true, null, now.AddSeconds(2));
-        Assert.Equal("▶ 作業中 3 / ! 入力待ち", view.Rows[0].Status);
+        Assert.Equal("作業中 3 / 入力待ち", view.Rows[0].Status);
         model.Apply(new(1, "stop", WorkProvider.CodexDesktop, "s0", "t", WorkEventKind.StopCandidate, now.AddSeconds(3), true));
         view.Update(model, true, true, null, now.AddSeconds(4));
-        Assert.Equal("▶ 作業中 3 / ! 入力待ち", view.Rows[0].Status);
+        Assert.Equal("作業中 3 / 入力待ち", view.Rows[0].Status);
         Assert.Equal("—", view.Rows[1].Status);
     }
 
@@ -47,10 +63,10 @@ public sealed class WorkStatusPresentationTests
     }
 
     [Theory]
-    [InlineData(WorkEventKind.Started, "▶ 作業中 1")]
-    [InlineData(WorkEventKind.Waiting, "! 入力待ち")]
-    [InlineData(WorkEventKind.Completed, "● 応答終了")]
-    [InlineData(WorkEventKind.StopCandidate, "● 応答終了")]
+    [InlineData(WorkEventKind.Started, "作業中 1")]
+    [InlineData(WorkEventKind.Waiting, "入力待ち")]
+    [InlineData(WorkEventKind.Completed, "応答終了")]
+    [InlineData(WorkEventKind.StopCandidate, "応答終了")]
     [InlineData(WorkEventKind.Failed, "—")]
     [InlineData(WorkEventKind.Interrupted, "—")]
     [InlineData(WorkEventKind.Ended, "—")]
@@ -100,11 +116,11 @@ public sealed class WorkStatusPresentationTests
         var view = new WorkStatusViewModel();
         view.Update(model, true, true, null, now);
         var row = view.Rows.Single(r => r.Provider == provider);
-        Assert.Equal($"▶ 作業中 {running}", row.Status);
+        Assert.Equal($"作業中 {running}", row.Status);
         Assert.Equal(2, row.NoticeIds.Count);
         model.Acknowledge(row.NoticeIds);
         view.Update(model, true, true, null, now);
-        Assert.Equal($"▶ 作業中 {running}", row.Status);
+        Assert.Equal($"作業中 {running}", row.Status);
     }
 
     [Fact]
@@ -116,10 +132,10 @@ public sealed class WorkStatusPresentationTests
         model.Apply(new(1, "stopped", WorkProvider.CodexDesktop, "current", "t", WorkEventKind.StopCandidate, now, true));
         var view = new WorkStatusViewModel();
         view.Update(model, true, false, null, now);
-        Assert.Equal("● 応答終了", view.Rows[0].Status);
+        Assert.Equal("応答終了", view.Rows[0].Status);
         model.Acknowledge(view.Rows[0].NoticeIds);
         view.Update(model, true, false, null, now);
-        Assert.Equal("● 応答終了", view.Rows[0].Status);
+        Assert.Equal("応答終了", view.Rows[0].Status);
         model.Apply(new(1, "interrupted", WorkProvider.CodexDesktop, "other", "t", WorkEventKind.Interrupted, now.AddSeconds(1), true));
         view.Update(model, true, false, null, now.AddSeconds(1));
         Assert.Equal("—", view.Rows[0].Status);
@@ -135,7 +151,7 @@ public sealed class WorkStatusPresentationTests
         model.Apply(new(1, "stopped", WorkProvider.CodexDesktop, "stopped", "t", WorkEventKind.StopCandidate, now.AddSeconds(-1), true));
         var view = new WorkStatusViewModel();
         view.Update(model, true, false, null, now);
-        Assert.Equal("▶ 作業中 1 / ! 入力待ち", view.Rows[0].Status);
+        Assert.Equal("作業中 1 / 入力待ち", view.Rows[0].Status);
         view.Update(model, true, false, null, now.AddMinutes(11));
         Assert.Equal("—", view.Rows[0].Status);
     }
@@ -174,6 +190,26 @@ public sealed class WorkStatusPresentationTests
         finally { window.Close(); }
     }
 
+    [AvaloniaFact]
+    public void VisibleWorkRowsUpdateAfterTheWindowHasOpened()
+    {
+        var usage = new UsageViewModel { ShowCodex = false, ShowClaude = false };
+        var window = new MainWindow { DataContext = usage };
+        usage.WorkStatus.Update(new WorkStatusModel(), true, true, null, DateTimeOffset.UtcNow);
+        window.Show();
+        try
+        {
+            var model = new WorkStatusModel();
+            var now = DateTimeOffset.UtcNow;
+            for (int index = 0; index < 3; index++)
+                model.Apply(new(1, "start-" + index, WorkProvider.CodexDesktop, "s" + index, "t", WorkEventKind.Started, now, true));
+            usage.WorkStatus.Update(model, true, true, null, now);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            window.UpdateLayout();
+            Assert.Contains(window.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == "作業中 3");
+        }
+        finally { window.Close(); }
+    }
     [Fact]
     public async Task CorruptWorkStateStopsOnlyWorkRuntimeAndRetainsOriginal()
     {

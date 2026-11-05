@@ -11,13 +11,17 @@ public static partial class ClickThroughHelper
     private const int GwlExStyle = -20;
     private const long WsExTransparent = 0x20;
     private const long WsExToolWindow = 0x80;
+    private const long WsExAppWindow = 0x40000;
     private const long WsExLayered = 0x80000;
 
     public static void Apply(nint windowHandle, bool enabled)
     {
         nint style = GetWindowLongPtr(windowHandle, GwlExStyle);
         ThrowOnFailure(style);
-        long value = style.ToInt64() | WsExToolWindow;
+        // Explicit taskbar windows (including the isolated acceptance host) must
+        // remain discoverable. Ordinary widgets still use the tool-window style.
+        long original = style.ToInt64();
+        long value = (original & WsExAppWindow) != 0 ? original & ~WsExToolWindow : original | WsExToolWindow;
         // Avalonia's composition transparency does not imply WS_EX_LAYERED.
         // Cross-process mouse passthrough requires both LAYERED and TRANSPARENT.
         bool initializeLayered = enabled && (value & WsExLayered) == 0;

@@ -8,6 +8,8 @@ public sealed class ClickThroughHelperTests
     [Theory]
     [InlineData(0u)]
     [InlineData(0x00200000u)] // Avalonia composition: WS_EX_NOREDIRECTIONBITMAP
+    [InlineData(0x00040000u)] // Explicit WS_EX_APPWINDOW remains visible in the taskbar.
+    [InlineData(0x00240000u)]
     public void NonLayeredWindowCanTogglePassthroughWithoutLosingOtherStyles(uint initialStyle)
     {
         nint window = CreateWindowEx(initialStyle, "STATIC", "", 0x80000000u, 0, 0, 10, 10, 0, 0, 0, 0);
@@ -18,6 +20,7 @@ public sealed class ClickThroughHelperTests
             long enabled = GetWindowLongPtr(window, -20).ToInt64();
             Assert.Equal(0x80020L, enabled & 0x80020L);
             Assert.Equal((long)initialStyle, enabled & initialStyle);
+            Assert.Equal((initialStyle & 0x40000) != 0 ? 0L : 0x80L, enabled & 0x80L);
             Assert.True(GetLayeredWindowAttributes(window, out _, out byte alpha, out uint flags));
             Assert.Equal(255, alpha);
             Assert.Equal(2u, flags);

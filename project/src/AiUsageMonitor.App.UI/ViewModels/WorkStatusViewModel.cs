@@ -35,6 +35,8 @@ public sealed class WorkStatusRowViewModel : INotifyPropertyChanged
     public WorkProvider Provider { get; }
     public string Name { get; }
     public string Status { get; private set; } = "—";
+    public IReadOnlyList<WorkStatusPartViewModel> StatusParts { get; private set; } = [];
+    public bool HasStatusParts => StatusParts.Count > 0;
     public string Detail { get; private set; } = "";
     public bool HasDetail => Detail.Length > 0;
     public bool IsVisible { get; private set; }
@@ -52,14 +54,15 @@ public sealed class WorkStatusRowViewModel : INotifyPropertyChanged
         bool received = latest is not null;
         WorkStatusSummary summary = model.Summarize(Provider, now, available && received);
         NoticeIds = summary.Notices.Select(n => n.Id).ToArray();
-        var parts = new List<string>();
-        if (summary.Running > 0) parts.Add($"▶ 作業中 {summary.Running}");
-        if (summary.Waiting > 0) parts.Add("! 入力待ち");
+        var parts = new List<WorkStatusPartViewModel>();
+        if (summary.Running > 0) parts.Add(new($"作業中 {summary.Running}", WorkSessionState.Running));
+        if (summary.Waiting > 0) parts.Add(new("入力待ち", WorkSessionState.Waiting));
         if (parts.Count == 0 && available && latest?.State is WorkSessionState.StopCandidate or WorkSessionState.Completed)
-            parts.Add("● 応答終了");
-        Status = parts.Count > 0 ? string.Join(" / ", parts) : "—";
+            parts.Add(new("応答終了", latest.State));
+        StatusParts = parts.ToArray();
+        Status = parts.Count > 0 ? string.Join(" / ", parts.Select(part => part.Text)) : "—";
         Detail = problem ?? "";
-        foreach (string property in new[] { nameof(IsVisible), nameof(Status), nameof(Detail), nameof(HasDetail), nameof(HasNotices), nameof(NoticeIds) })
+        foreach (string property in new[] { nameof(IsVisible), nameof(Status), nameof(StatusParts), nameof(HasStatusParts), nameof(Detail), nameof(HasDetail), nameof(HasNotices), nameof(NoticeIds) })
             Changed(property);
         ((AcknowledgeAction)AcknowledgeCommand).Changed();
     }
@@ -74,4 +77,11 @@ public sealed class WorkStatusRowViewModel : INotifyPropertyChanged
             row.AcknowledgeRequested?.Invoke(parameter is IReadOnlyList<string> ids ? ids : row.NoticeIds.ToArray());
         public void Changed() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
     }
+}
+
+public sealed record WorkStatusPartViewModel(string Text, WorkSessionState State)
+{
+    public bool IsRunning => State == WorkSessionState.Running;
+    public bool IsWaiting => State == WorkSessionState.Waiting;
+    public bool IsResponseEnded => State is WorkSessionState.StopCandidate or WorkSessionState.Completed;
 }

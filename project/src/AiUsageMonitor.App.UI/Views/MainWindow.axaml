@@ -181,6 +181,15 @@
     <Style Selector="TextBlock.freshness.danger">
       <Setter Property="Foreground" Value="{DynamicResource DangerBrush}"/>
     </Style>
+    <Style Selector="Ellipse.work-status-indicator">
+      <Setter Property="Fill" Value="White"/>
+    </Style>
+    <Style Selector="Ellipse.work-status-indicator.running">
+      <Setter Property="Fill" Value="#FFFFD54F"/>
+    </Style>
+    <Style Selector="Ellipse.work-status-indicator.waiting">
+      <Setter Property="Fill" Value="#FFFF6B6B"/>
+    </Style>
   </Window.Styles>
 
   <Grid x:Name="AppearanceHost" Background="Transparent">
@@ -212,8 +221,27 @@
                   <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:WorkStatusRowViewModel">
                       <StackPanel IsVisible="{Binding IsVisible}" Margin="0,0,0,8">
-                        <TextBlock Text="{Binding Name}" FontSize="11" FontWeight="SemiBold"/>
-                        <TextBlock Text="{Binding Status}" FontSize="11" TextWrapping="Wrap"/>
+                        <TextBlock Classes="work-status-text" Text="{Binding Name}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource MutedBrush}"/>
+                        <ItemsControl ItemsSource="{Binding StatusParts}" IsVisible="{Binding HasStatusParts}">
+                          <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                              <WrapPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                          </ItemsControl.ItemsPanel>
+                          <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:WorkStatusPartViewModel">
+                              <StackPanel Orientation="Horizontal" Margin="0,0,8,0">
+                                <Ellipse Classes="work-status-indicator"
+                                         Classes.running="{Binding IsRunning}"
+                                         Classes.waiting="{Binding IsWaiting}"
+                                         Width="7" Height="7" Margin="0,0,4,0" VerticalAlignment="Center"
+                                         AutomationProperties.Name="{Binding Text}"/>
+                                <TextBlock Classes="work-status-text" Text="{Binding Text}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
+                              </StackPanel>
+                            </DataTemplate>
+                          </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Text="{Binding Status}" IsVisible="{Binding !HasStatusParts}" FontSize="11" Foreground="{DynamicResource MutedBrush}"/>
                         <TextBlock Text="{Binding Detail}" IsVisible="{Binding HasDetail}" FontSize="10" TextWrapping="Wrap" Foreground="{DynamicResource MutedBrush}"/>
                       </StackPanel>
                     </DataTemplate>

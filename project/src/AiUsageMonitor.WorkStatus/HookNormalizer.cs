@@ -20,6 +20,9 @@ public static class HookNormalizer
         {
             "SessionStart" => WorkEventKind.Connected,
             "UserPromptSubmit" => WorkEventKind.Started,
+            "PreModelRequest" when provider == WorkProvider.CodexDesktop => WorkEventKind.Started,
+            "PreToolUse" when provider == WorkProvider.ClaudeCode && Text(input, "tool_name") == "AskUserQuestion" => WorkEventKind.Waiting,
+            "PostToolUseFailure" when provider == WorkProvider.ClaudeCode && Text(input, "tool_name") == "AskUserQuestion" => WorkEventKind.Activity,
             "PreToolUse" or "PostToolUse" => WorkEventKind.Activity,
             "PermissionRequest" => WorkEventKind.Waiting,
             "Stop" => stopMayComplete && knownInactive ? WorkEventKind.Completed : WorkEventKind.StopCandidate,
@@ -56,8 +59,11 @@ public static class HookNormalizer
             }
             else if (hook == "UserPromptSubmit") questions = AnsweredQuestions(Text(input, "prompt"));
         }
+        bool? inputPending = provider == WorkProvider.ClaudeCode && Text(input, "tool_name") == "AskUserQuestion"
+            ? hook == "PreToolUse" ? true : hook is "PostToolUse" or "PostToolUseFailure" ? false : null
+            : null;
         return new(1, Guid.NewGuid().ToString("N"), provider, Digest(session), turn.Length > 0 ? Digest(turn) : "",
-            kind.Value, at.ToUniversalTime(), true, at.UtcTicks, kind == WorkEventKind.Completed, questions);
+            kind.Value, at.ToUniversalTime(), true, at.UtcTicks, kind == WorkEventKind.Completed, questions, inputPending);
     }
 
     private static string QuestionId(string call, int index) => Digest(call + ":" + index.ToString(System.Globalization.CultureInfo.InvariantCulture));

@@ -15,8 +15,8 @@ public static class HookExamples
         if (provider == WorkProvider.ClaudeCode && (claudeVersion is null || claudeVersion < new Version(2, 1, 295)))
             throw new ArgumentException("WORK_STATUS_CLAUDE_VERSION_UNVERIFIED");
         string[] names = provider == WorkProvider.CodexDesktop
-            ? ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest", "Stop", "Interrupt", "SessionEnd"]
-            : ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest", "Stop", "StopFailure", "SessionEnd", "Notification"];
+            ? ["SessionStart", "UserPromptSubmit", "PreModelRequest", "PreToolUse", "PostToolUse", "PermissionRequest", "Stop", "Interrupt", "SessionEnd"]
+            : ["SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "PermissionRequest", "Stop", "StopFailure", "SessionEnd", "Notification"];
         var hooks = new Dictionary<string, object>();
         foreach (string name in names)
         {
@@ -25,6 +25,7 @@ public static class HookExamples
                 : new() { ["type"] = "command", ["command"] = CodexCommand(bridgePath, stateRoot, windows), ["timeout"] = 3 };
             var group = new Dictionary<string, object> { ["hooks"] = new[] { handler } };
             if (name == "Notification") group["matcher"] = "permission_prompt|idle_prompt|elicitation_dialog|elicitation_url_dialog";
+            if (name == "PostToolUseFailure") group["matcher"] = "AskUserQuestion";
             hooks[name] = new[] { group };
         }
         return JsonSerializer.Serialize(new { hooks }, WorkStatusStore.JsonOptions);

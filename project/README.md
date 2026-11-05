@@ -1,6 +1,6 @@
 # AI Usage Monitor
 
-> **開発中（Experimental）**。Windows x64で一部機能を実機確認しています。macOSとWindows ARM64の実機受入は未完了です。[他PCでの開発手順](docs/cross-platform-development.md)を参照してください。
+> **開発中（Experimental）**。Windows x64の一部機能に加え、Windows ARM64の開発候補でネイティブ起動・利用枠・作業状態・通常版切替を実機確認しています。確認範囲は[作業状態の検証状況](docs/work-status.md#対応状況と検証)を参照してください。macOSの実機受入は未完了です。[他PCでの開発手順](docs/cross-platform-development.md)も参照してください。
 
 OpenAIおよびAnthropic非公式のWindows用デスクトップウィジェットです。CodexとClaude Codeの利用枠、リセット時刻、最終正常取得日時をまとめて監視します。Codexでは任意で追加利用額とクレジット残高も表示します。Codexは公式の `codex app-server` RPC、Claude Codeは公式CLIから取得し、各providerを個別に有効化できます。
 

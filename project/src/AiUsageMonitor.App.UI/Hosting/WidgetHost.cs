@@ -156,7 +156,10 @@ public sealed class WidgetHost : IAsyncDisposable
     /// <summary>常駐中に2つ目の起動が要求されたときなど、ウィジェットを再表示する。</summary>
     public void ShowWidget()
     {
-        if (_window is null || _window.IsVisible) return;
+        if (_window is null) return;
+        bool minimized = _window.WindowState == WindowState.Minimized;
+        if (_window.IsVisible && !minimized) return;
+        if (minimized) _window.WindowState = WindowState.Normal;
         _window.Show();
         ApplyLayer();
         Reposition(true);
@@ -326,7 +329,11 @@ public sealed class WidgetHost : IAsyncDisposable
         else Dispatcher.UIThread.Post(Apply);
     }
 
-    private string TrayToolTip() => _layerDegraded ? "AI Usage Monitor（層の維持に失敗）" : "AI Usage Monitor";
+    internal string TrayToolTip()
+    {
+        string name = _services.WorkStatusOnly ? "AI Usage Monitor（隔離検証）" : "AI Usage Monitor";
+        return _layerDegraded ? name + "（層の維持に失敗）" : name;
+    }
 
     // ---- 常駐アイコン ----
 
@@ -448,6 +455,11 @@ public sealed class WidgetHost : IAsyncDisposable
             CurrentClaudeHealth,
             monitors,
             _services.ClaudeSetupExample);
+        if (_services.WorkStatusOnly)
+        {
+            dialog.Title = "AI Usage Monitor 設定 - 隔離検証";
+            dialog.ShowInTaskbar = true;
+        }
         dialog.ClaudeCompatibilityRequested += safety =>
         {
             bool Release()
@@ -541,7 +553,7 @@ public sealed class WidgetHost : IAsyncDisposable
             _claudeSetupWindow.Activate();
             return;
         }
-        if (!_settings.ShowClaudeUsage)
+        if (!_services.WorkStatusOnly && !_settings.ShowClaudeUsage)
         {
             _settings = (_settings with { ShowClaudeUsage = true }).Normalized();
             await _store.SaveAsync(_settings);
@@ -551,7 +563,7 @@ public sealed class WidgetHost : IAsyncDisposable
 
         var window = new ClaudeSetupWindow(
             CurrentClaude,
-            () => _claudeRuntime.RefreshAsync(
+            _services.WorkStatusOnly ? null : () => _claudeRuntime.RefreshAsync(
                 ClaudeUsageAcquisitionMode.OfficialCliOnly,
                 manual: true,
                 DateTimeOffset.UtcNow,
@@ -560,6 +572,13 @@ public sealed class WidgetHost : IAsyncDisposable
             _services.ClaudeWorkspace,
             _services.ShellOpener,
             _services.ReadmePath);
+        if (_services.WorkStatusOnly)
+        {
+            window.Title = "Claude Code連携 - 隔離検証";
+            window.ShowInTaskbar = true;
+            window.TestConnectionButton.IsEnabled = false;
+            window.ActionMessageText.Text = "作業状態の隔離検証中は、利用枠の接続テストを実行しません。";
+        }
         window.SetupSucceeded += () => _ = MarkClaudeSetupCompletedAsync();
         window.Closed += (_, _) => _claudeSetupWindow = null;
         _claudeSetupWindow = window;
