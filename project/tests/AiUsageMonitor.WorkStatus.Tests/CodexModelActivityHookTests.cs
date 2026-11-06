@@ -30,6 +30,7 @@ public sealed class CodexModelActivityHookTests
         WorkStatusEvent value = Assert.IsType<WorkStatusEvent>(Hook("PreModelRequest", 0));
         Assert.Equal(WorkEventKind.Started, value.Kind);
         Assert.Null(value.QuestionIds);
+        Assert.False(value.OrdinaryPrompt);
         Assert.Equal(HookNormalizer.Digest("synthetic-model-session"), value.SessionId);
         Assert.Equal(HookNormalizer.Digest("synthetic-model-turn"), value.TurnId);
         Assert.DoesNotContain("PRIVATE_", JsonSerializer.Serialize(value));
@@ -61,6 +62,7 @@ public sealed class CodexModelActivityHookTests
             At = Now.AddSeconds(1),
             Order = Now.AddSeconds(1).UtcTicks,
             QuestionIds = [new string('A', 24)],
+            OrdinaryPrompt = false,
         });
         model.Apply(Hook("PreModelRequest", 2)!);
         WorkStatusSummary summary = model.Summarize(WorkProvider.CodexDesktop, Now.AddSeconds(3), true);

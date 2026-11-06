@@ -46,14 +46,13 @@ public sealed class WorkQuestionTests
     }
 
     [Fact]
-    public void AsyncQuestionSurvivesToolsUnrelatedPromptsAndStopUntilMatchingAnswer()
+    public void AsyncQuestionSurvivesToolsAndStopUntilMatchingAnswer()
     {
         var model = new WorkStatusModel();
         model.Apply(Hook("UserPromptSubmit", 0)!);
         model.Apply(Hook("PreToolUse", 1)!);
         model.Apply(Hook("PreToolUse", 2, tool: "exec_command")!);
-        model.Apply(Hook("UserPromptSubmit", 3, prompt: "unrelated", turn: "new")!);
-        model.Apply(Hook("Stop", 4, turn: "new")!);
+        model.Apply(Hook("Stop", 4)!);
         Assert.Equal(1, model.Summarize(WorkProvider.CodexDesktop, Now.AddHours(1), true).Waiting);
         Assert.Equal(0, model.Summarize(WorkProvider.CodexDesktop, Now.AddSeconds(4), true).Running);
         model.Apply(Hook("UserPromptSubmit", 5, prompt: Reply("different"), turn: "newer")!);
@@ -61,6 +60,52 @@ public sealed class WorkQuestionTests
         model.Apply(Hook("UserPromptSubmit", 6, prompt: Reply(), turn: "answered")!);
         Assert.Empty(model.PendingQuestions);
         Assert.Equal(1, model.Summarize(WorkProvider.CodexDesktop, Now.AddSeconds(6), true).Running);
+    }
+
+    [Fact]
+    public void OrdinaryMessageClearsEarlierCardsOnlyInTheSameChat()
+    {
+        var model = new WorkStatusModel();
+        model.Apply(Hook("PreToolUse", 0, count: 2)!);
+        model.Apply(Hook("Stop", 1)!);
+        model.Apply(Hook("PreToolUse", 2)! with { SessionId = "other" });
+        WorkStatusEvent message = Hook("UserPromptSubmit", 3, prompt: "PRIVATE_ORDINARY_ANSWER", turn: "new")!;
+        Assert.True(message.OrdinaryPrompt);
+        Assert.Null(message.QuestionIds);
+        Assert.DoesNotContain("PRIVATE_", JsonSerializer.Serialize(message));
+        model.Apply(message);
+        Assert.Equal("other", Assert.Single(model.PendingQuestions).SessionId);
+        Assert.Equal(1, model.Summarize(WorkProvider.CodexDesktop, Now.AddSeconds(3), true).Running);
+        Assert.Equal(1, model.Summarize(WorkProvider.CodexDesktop, Now.AddSeconds(3), true).Waiting);
+        model.Apply(Hook("PreToolUse", 4)!);
+        Assert.Equal("other", Assert.Single(model.PendingQuestions).SessionId);
+    }
+
+    [Fact]
+    public void DelayedPromptKeepsNewerCardAndSessionAndRejectsLateOlderCardsAfterRestart()
+    {
+        string parent = Environment.GetEnvironmentVariable("AI_USAGE_MONITOR_TEST_ARTIFACTS_ROOT") ?? AppContext.BaseDirectory;
+        string root = Path.Combine(parent, "question-tests", Guid.NewGuid().ToString("N"));
+        var store = new WorkStatusStore(root);
+        WorkStatusEvent oldCard = Hook("PreToolUse", 0)!;
+        // A question saved by an older release has no OpenedAt.
+        var legacy = new WorkStatusModel();
+        legacy.Apply(oldCard);
+        legacy.PendingQuestions[0] = legacy.PendingQuestions[0] with { OpenedAt = null };
+        store.Save(legacy);
+        var collector = new WorkStatusCollector(store);
+        WorkStatusEvent newer = Hook("PreToolUse", 3, call: "newer", turn: "new")!;
+        WorkStatusCollector.WriteEvent(root, Hook("PreModelRequest", 2, turn: "new")!);
+        WorkStatusCollector.WriteEvent(root, newer);
+        collector.Poll(Now.AddSeconds(3));
+        WorkStatusCollector.WriteEvent(root, Hook("UserPromptSubmit", 1, prompt: "continue here", turn: "new")!);
+        WorkStatusModel model = collector.Poll(Now.AddSeconds(4)).Model;
+        Assert.Equal(Assert.Single(newer.QuestionIds!), Assert.Single(model.PendingQuestions).Id);
+        Assert.Equal(Now.AddSeconds(2), Assert.Single(model.Sessions).At);
+        WorkStatusEvent late = Hook("PreToolUse", 0, call: "late")!;
+        WorkStatusCollector.WriteEvent(root, late);
+        model = new WorkStatusCollector(store).Poll(Now.AddSeconds(5)).Model;
+        Assert.Equal(Assert.Single(newer.QuestionIds!), Assert.Single(model.PendingQuestions).Id);
     }
 
     [Fact]
@@ -102,12 +147,15 @@ public sealed class WorkQuestionTests
     [Theory]
     [InlineData("<send_user_message_question_reply>[]</send_user_message_question_reply>")]
     [InlineData("<send_user_message_question_reply>{broken}</send_user_message_question_reply>")]
-    [InlineData("a plain message mentioning request_user_input_async")]
+    [InlineData("  ")]
+    [InlineData("prefix <send_user_message_question_reply>{broken}</send_user_message_question_reply>")]
     public void UnrecognizedReplyDoesNotGuessAnAnswer(string prompt)
     {
         var model = new WorkStatusModel();
         model.Apply(Hook("PreToolUse", 0)!);
-        model.Apply(Hook("UserPromptSubmit", 1, prompt: prompt)!);
+        WorkStatusEvent value = Hook("UserPromptSubmit", 1, prompt: prompt)!;
+        Assert.False(value.OrdinaryPrompt);
+        model.Apply(value);
         Assert.Single(model.PendingQuestions);
     }
 

@@ -7,6 +7,9 @@ namespace AiUsageMonitor.WorkStatus;
 
 public static class HookNormalizer
 {
+    private const string QuestionReplyStart = "<send_user_message_question_reply>";
+    private const string QuestionReplyEnd = "</send_user_message_question_reply>";
+
     public static WorkStatusEvent? Normalize(JsonElement input, WorkProvider provider, bool desktopVerified,
         DateTimeOffset at, bool stopMayComplete = false)
     {
@@ -39,6 +42,7 @@ public static class HookNormalizer
         };
         if (kind is null) return null;
         string[]? questions = null;
+        bool ordinaryPrompt = false;
         if (provider == WorkProvider.CodexDesktop)
         {
             string tool = Text(input, "tool_name");
@@ -57,25 +61,31 @@ public static class HookNormalizer
                     kind = WorkEventKind.QuestionAnswered;
                 else return null; // An asynchronous tool result is not the user's answer.
             }
-            else if (hook == "UserPromptSubmit") questions = AnsweredQuestions(Text(input, "prompt"));
+            else if (hook == "UserPromptSubmit")
+            {
+                string prompt = Text(input, "prompt");
+                questions = AnsweredQuestions(prompt);
+                ordinaryPrompt = !string.IsNullOrWhiteSpace(prompt) &&
+                    !prompt.Contains(QuestionReplyStart, StringComparison.Ordinal) &&
+                    !prompt.Contains(QuestionReplyEnd, StringComparison.Ordinal);
+            }
         }
         bool? inputPending = provider == WorkProvider.ClaudeCode && Text(input, "tool_name") == "AskUserQuestion"
             ? hook == "PreToolUse" ? true : hook is "PostToolUse" or "PostToolUseFailure" ? false : null
             : null;
         return new(1, Guid.NewGuid().ToString("N"), provider, Digest(session), turn.Length > 0 ? Digest(turn) : "",
-            kind.Value, at.ToUniversalTime(), true, at.UtcTicks, kind == WorkEventKind.Completed, questions, inputPending);
+            kind.Value, at.ToUniversalTime(), true, at.UtcTicks, kind == WorkEventKind.Completed, questions, inputPending, ordinaryPrompt);
     }
 
     private static string QuestionId(string call, int index) => Digest(call + ":" + index.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
     private static string[]? AnsweredQuestions(string prompt)
     {
-        const string start = "<send_user_message_question_reply>", end = "</send_user_message_question_reply>";
         ReadOnlySpan<char> value = prompt.AsSpan().Trim();
-        if (!value.StartsWith(start, StringComparison.Ordinal) || !value.EndsWith(end, StringComparison.Ordinal)) return null;
+        if (!value.StartsWith(QuestionReplyStart, StringComparison.Ordinal) || !value.EndsWith(QuestionReplyEnd, StringComparison.Ordinal)) return null;
         try
         {
-            using var replies = JsonDocument.Parse(value[start.Length..^end.Length].ToString());
+            using var replies = JsonDocument.Parse(value[QuestionReplyStart.Length..^QuestionReplyEnd.Length].ToString());
             if (replies.RootElement.ValueKind != JsonValueKind.Array || replies.RootElement.GetArrayLength() > 16) return null;
             var ids = new List<string>();
             foreach (var reply in replies.RootElement.EnumerateArray())

@@ -11,11 +11,14 @@ public sealed record WorkStatusEvent([property: JsonRequired] int Protocol, [pro
     [property: JsonRequired] string TurnId, [property: JsonRequired] WorkEventKind Kind,
     [property: JsonRequired] DateTimeOffset At, [property: JsonRequired] bool DesktopVerified,
     long Order = 0, bool CompletionRetractable = false, string[]? QuestionIds = null,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool? InputPending = null);
-public sealed record WorkQuestion(string SessionId, string Id);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool? InputPending = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool OrdinaryPrompt = false);
+public sealed record WorkQuestion(string SessionId, string Id,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] DateTimeOffset? OpenedAt = null);
 public sealed record WorkSession(WorkProvider Provider, string SessionId, string TurnId,
     WorkSessionState State, DateTimeOffset At, long Order, bool CompletionRetractable = false,
-    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool InputPending = false);
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool InputPending = false,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] DateTimeOffset? LastOrdinaryPromptAt = null);
 public sealed record WorkNotice(string Id, WorkProvider Provider, string SessionId, string TurnId,
     WorkSessionState State, DateTimeOffset At);
 public sealed record WorkStatusSummary(int Running, int Waiting, int Unknown, int Completed,
@@ -43,6 +46,7 @@ public sealed class WorkStatusModel
         value.TurnId is { Length: <= 160 } && value.At.Offset == TimeSpan.Zero &&
         (value.InputPending is null || value.Provider == WorkProvider.ClaudeCode &&
             (value.InputPending.Value ? value.Kind == WorkEventKind.Waiting : value.Kind == WorkEventKind.Activity)) &&
+        (!value.OrdinaryPrompt || value is { Provider: WorkProvider.CodexDesktop, Kind: WorkEventKind.Started, QuestionIds: null }) &&
         (value.QuestionIds is null || value.Provider == WorkProvider.CodexDesktop &&
             value.Kind is WorkEventKind.Started or WorkEventKind.QuestionOpened or WorkEventKind.QuestionAnswered && value.QuestionIds.Length <= 16 &&
             value.QuestionIds.All(id => id is { Length: 24 } && id.All(char.IsAsciiHexDigit))) &&
@@ -54,6 +58,12 @@ public sealed class WorkStatusModel
         if (!Valid(value) || !ProcessedIds.Add(value.Id)) return false;
         int index = Sessions.FindIndex(s => s.Provider == value.Provider && s.SessionId == value.SessionId);
         WorkSession? previous = index >= 0 ? Sessions[index] : null;
+        DateTimeOffset? lastOrdinaryPromptAt = previous?.LastOrdinaryPromptAt;
+        if (value.OrdinaryPrompt && (lastOrdinaryPromptAt is null || value.At > lastOrdinaryPromptAt))
+        {
+            lastOrdinaryPromptAt = value.At;
+            RetireQuestions(value.SessionId, value.At);
+        }
         if (value.QuestionIds is not null)
         {
             foreach (string id in value.QuestionIds)
@@ -61,8 +71,9 @@ public sealed class WorkStatusModel
                 string key = value.SessionId + ":" + id;
                 if (value.Kind == WorkEventKind.QuestionOpened)
                 {
-                    if (!AnsweredQuestionIds.Contains(key) && !PendingQuestions.Any(q => q.SessionId == value.SessionId && q.Id == id))
-                        PendingQuestions.Add(new(value.SessionId, id));
+                    if (value.At < lastOrdinaryPromptAt) AnsweredQuestionIds.Add(key);
+                    else if (!AnsweredQuestionIds.Contains(key) && !PendingQuestions.Any(q => q.SessionId == value.SessionId && q.Id == id))
+                        PendingQuestions.Add(new(value.SessionId, id, value.At));
                 }
                 else
                 {
@@ -78,7 +89,14 @@ public sealed class WorkStatusModel
             return true;
         }
         if (previous is not null && (value.At < previous.At ||
-            value.At == previous.At && value.Order <= previous.Order)) return true;
+            value.At == previous.At && value.Order <= previous.Order))
+        {
+            // A later activity can arrive before its prompt. Retain the question boundary
+            // without rolling back the newer session state.
+            if (lastOrdinaryPromptAt != previous.LastOrdinaryPromptAt)
+                Sessions[index] = previous with { LastOrdinaryPromptAt = lastOrdinaryPromptAt };
+            return true;
+        }
         if (previous is not null && value.Kind != WorkEventKind.Started && value.TurnId.Length > 0 &&
             previous.TurnId.Length > 0 && value.TurnId != previous.TurnId) return true;
         // Uncorrelated Claude terminal hooks cannot safely close a newer generation.
@@ -104,17 +122,13 @@ public sealed class WorkStatusModel
             (value.InputPending ?? previous?.InputPending ?? false);
         if (inputPending) state = WorkSessionState.Waiting;
         if (value.Kind == WorkEventKind.Ended && value.Provider == WorkProvider.CodexDesktop)
-        {
-            foreach (WorkQuestion question in PendingQuestions.Where(q => q.SessionId == value.SessionId))
-                AnsweredQuestionIds.Add(question.SessionId + ":" + question.Id);
-            PendingQuestions.RemoveAll(q => q.SessionId == value.SessionId);
-        }
+            RetireQuestions(value.SessionId);
         if (value.Kind is WorkEventKind.Started or WorkEventKind.Activity or WorkEventKind.Completed)
             Notices.RemoveAll(n => n.Provider == value.Provider && n.SessionId == value.SessionId &&
                 (n.State == WorkSessionState.StopCandidate || value.Kind == WorkEventKind.Activity &&
                     previous?.CompletionRetractable == true && n.TurnId == turn && n.State == WorkSessionState.Completed));
         var session = new WorkSession(value.Provider, value.SessionId, turn, state, value.At,
-            value.Order, value.Kind == WorkEventKind.Completed && value.CompletionRetractable, inputPending);
+            value.Order, value.Kind == WorkEventKind.Completed && value.CompletionRetractable, inputPending, lastOrdinaryPromptAt);
         if (index >= 0) Sessions[index] = session; else Sessions.Add(session);
         if (state is WorkSessionState.Completed or WorkSessionState.Interrupted or WorkSessionState.Failed or WorkSessionState.StopCandidate)
         {
@@ -123,6 +137,16 @@ public sealed class WorkStatusModel
                 Notices.Add(new(id, value.Provider, value.SessionId, turn, state, value.At));
         }
         return true;
+    }
+
+    private void RetireQuestions(string sessionId, DateTimeOffset? before = null)
+    {
+        PendingQuestions.RemoveAll(question =>
+        {
+            if (question.SessionId != sessionId || (before is not null && question.OpenedAt >= before)) return false;
+            AnsweredQuestionIds.Add(sessionId + ":" + question.Id);
+            return true;
+        });
     }
 
     public void Acknowledge(IEnumerable<string> ids)
