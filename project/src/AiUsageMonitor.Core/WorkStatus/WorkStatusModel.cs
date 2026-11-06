@@ -24,6 +24,8 @@ public sealed record WorkNotice(string Id, WorkProvider Provider, string Session
 public sealed record WorkStatusSummary(int Running, int Waiting, int Unknown, int Completed,
     int Candidates, int Attention, IReadOnlyList<WorkNotice> Notices)
 {
+    public int QuestionWaiting { get; init; }
+    public int PermissionWaiting { get; init; }
     public int Interrupted => Notices.Count(n => n.State == WorkSessionState.Interrupted);
     public int Failed => Notices.Count(n => n.State == WorkSessionState.Failed);
 }
@@ -178,6 +180,11 @@ public sealed class WorkStatusModel
             checks.Length,
             notices.Count(n => n.State == WorkSessionState.Completed),
             notices.Count(n => n.State == WorkSessionState.StopCandidate),
-            notices.Count(n => n.State is WorkSessionState.Failed or WorkSessionState.Interrupted), [.. notices, .. checks]);
+            notices.Count(n => n.State is WorkSessionState.Failed or WorkSessionState.Interrupted), [.. notices, .. checks])
+        {
+            QuestionWaiting = sessions.Count(s => available && QuestionPending(s)),
+            PermissionWaiting = provider == WorkProvider.CodexDesktop
+                ? sessions.Count(s => !QuestionPending(s) && Fresh(s) && s.State == WorkSessionState.Waiting) : 0,
+        };
     }
 }

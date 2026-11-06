@@ -63,7 +63,12 @@ public sealed class WorkStatusRowViewModel : INotifyPropertyChanged
                 s.State is WorkSessionState.StopCandidate or WorkSessionState.Completed &&
                 busySince.TryGetValue(s.SessionId, out var at) && at > s.At);
         if (running > 0) parts.Add(new($"作業中 {running}", WorkSessionState.Running));
-        if (summary.Waiting > 0) parts.Add(new("入力待ち", WorkSessionState.Waiting));
+        if (Provider == WorkProvider.CodexDesktop)
+        {
+            if (summary.QuestionWaiting > 0) parts.Add(new("質問待ち", WorkSessionState.Waiting));
+            if (summary.PermissionWaiting > 0) parts.Add(new("権限確認中", WorkSessionState.Waiting));
+        }
+        else if (summary.Waiting > 0) parts.Add(new("入力待ち", WorkSessionState.Waiting));
         if (parts.Count == 0 && available && latest?.State is WorkSessionState.StopCandidate or WorkSessionState.Completed)
             parts.Add(new("応答終了", latest.State));
         StatusParts = parts.ToArray();

@@ -55,7 +55,7 @@ public sealed partial class WorkStatusPresentationTests
                 Assert.True(block.Bounds.Width > 0);
                 Assert.True(MainWindowTestSupport.BoundsIn(block, window).Right <= window.Bounds.Width + 1);
             });
-            Assert.Equal("作業中 3 / 入力待ち", usage.WorkStatus.Rows[0].Status);
+            Assert.Equal("作業中 3 / 権限確認中", usage.WorkStatus.Rows[0].Status);
             Assert.Equal("応答終了", usage.WorkStatus.Rows[1].Status);
             Assert.DoesNotContain(window.GetVisualDescendants().OfType<TextBlock>(), block => block.Text?.Contains('!') == true);
 

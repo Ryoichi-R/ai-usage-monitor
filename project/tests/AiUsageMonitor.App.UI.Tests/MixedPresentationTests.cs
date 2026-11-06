@@ -27,6 +27,8 @@ public sealed class MixedPresentationTests
         for (int i = 0; i < 3; i++)
             model.Apply(new(1, "running-" + i, WorkProvider.CodexDesktop, "session-" + i, "t", WorkEventKind.Started, now, true));
         model.Apply(new(1, "waiting", WorkProvider.CodexDesktop, "waiting", "t", WorkEventKind.Waiting, now, true));
+        model.Apply(new(1, "question", WorkProvider.CodexDesktop, "question", "t", WorkEventKind.QuestionOpened,
+            now, true, QuestionIds: ["0123456789ABCDEF01234567"]));
         model.Apply(new(1, "claude", WorkProvider.ClaudeCode, "claude", "t", WorkEventKind.StopCandidate, now, true));
         view.WorkStatus.Update(model, true, true, null, now);
         var window = ShowLaidOut(view, new AppSettings
@@ -43,7 +45,7 @@ public sealed class MixedPresentationTests
             Border root = Named<Border>(window, "Root");
             var texts = window.GetVisualDescendants().OfType<TextBlock>()
                 .Where(text => text.IsEffectivelyVisible && text.Opacity > 0 && text.Bounds.Height > 0).ToArray();
-            string[] workLabels = ["Codex Desktop", "作業中 3", "入力待ち", "Claude Code", "応答終了"];
+            string[] workLabels = ["Codex Desktop", "作業中 3", "質問待ち", "権限確認中", "Claude Code", "応答終了"];
             var work = workLabels.Select(label => Assert.Single(texts, text => text.Text == label)).ToArray();
             var usage = texts.Where(text => text.Text is "CODEX" or "CLAUDE").ToArray();
             Assert.Equal(2, usage.Length);

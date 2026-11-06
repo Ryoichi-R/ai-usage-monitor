@@ -98,3 +98,5 @@ Macのメニューバーは通知到着時にも同じNativeMenuを維持する�
 
 markerは既存version 1の省略可能fieldで、旧snapshotを削除・初期化せず読み込める。markerなしの過去Waitingから質問を推測して変換しない。共通model/normalizerの変更はMacとWindows x64にも適用されるが、このWindows ARM64 PCの検証を他OSの実機受入とはしない。
 隔離modeで「Claude Code連携…」を開いても、利用枠の表示を有効化したり、設定を保存したりしない。接続テストを無効にして取得delegateを渡さず、実CLIの取得は開始しない。通常modeでのClaude連携設定手順は維持する。
+
+Codexの未回答質問カードは「質問待ち」、質問のないセッションの権限確認は「権限確認中」と表示する。別セッションで同時に発生した場合は両方を表示し、同じセッションに未回答質問がある場合は質問待ちを優先する。自動承認の権限確認も短時間表示されることがある。Claude Codeの質問失敗後の待機解除には、接続先にAskUserQuestion限定のPostToolUseFailureフックも適用する。

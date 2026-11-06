@@ -85,10 +85,10 @@ public sealed partial class WorkStatusPresentationTests
             now.AddSeconds(1), true, QuestionIds: ["0123456789ABCDEF01234567"]));
         var view = new WorkStatusViewModel();
         view.Update(model, true, true, null, now.AddSeconds(2));
-        Assert.Equal("作業中 3 / 入力待ち", view.Rows[0].Status);
+        Assert.Equal("作業中 3 / 質問待ち", view.Rows[0].Status);
         model.Apply(new(1, "stop", WorkProvider.CodexDesktop, "s0", "t", WorkEventKind.StopCandidate, now.AddSeconds(3), true));
         view.Update(model, true, true, null, now.AddSeconds(4));
-        Assert.Equal("作業中 3 / 入力待ち", view.Rows[0].Status);
+        Assert.Equal("作業中 3 / 質問待ち", view.Rows[0].Status);
         Assert.Equal("—", view.Rows[1].Status);
     }
 
@@ -110,7 +110,7 @@ public sealed partial class WorkStatusPresentationTests
 
     [Theory]
     [InlineData(WorkEventKind.Started, "作業中 1")]
-    [InlineData(WorkEventKind.Waiting, "入力待ち")]
+    [InlineData(WorkEventKind.Waiting, "権限確認中")]
     [InlineData(WorkEventKind.Completed, "応答終了")]
     [InlineData(WorkEventKind.StopCandidate, "応答終了")]
     [InlineData(WorkEventKind.Failed, "—")]
@@ -197,7 +197,7 @@ public sealed partial class WorkStatusPresentationTests
         model.Apply(new(1, "stopped", WorkProvider.CodexDesktop, "stopped", "t", WorkEventKind.StopCandidate, now.AddSeconds(-1), true));
         var view = new WorkStatusViewModel();
         view.Update(model, true, false, null, now);
-        Assert.Equal("作業中 1 / 入力待ち", view.Rows[0].Status);
+        Assert.Equal("作業中 1 / 権限確認中", view.Rows[0].Status);
         view.Update(model, true, false, null, now.AddMinutes(11));
         Assert.Equal("—", view.Rows[0].Status);
     }
