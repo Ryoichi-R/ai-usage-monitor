@@ -2,6 +2,7 @@ using AiUsageMonitor.App.UI.Runtime;
 using AiUsageMonitor.Claude.Acquisition;
 using AiUsageMonitor.Claude.Cli;
 using AiUsageMonitor.Claude.Transport;
+using AiUsageMonitor.Core.WorkStatus;
 using AiUsageMonitor.Platform;
 using Avalonia.Controls;
 using Avalonia.Platform;
@@ -16,6 +17,7 @@ public sealed class WidgetHostServices
 {
     public bool WorkStatusOnly { get; init; }
     public required IAppPathProvider AppPaths { get; init; }
+    public Func<IReadOnlyList<WorkSession>, DateTimeOffset, IReadOnlyDictionary<string, DateTimeOffset>>? ReadClaudeBusySince { get; init; }
 
     /// <summary>ログイン時自動起動（設定の<c>StartWithWindows</c>）の適用先。</summary>
     public required IStartupService Startup { get; init; }

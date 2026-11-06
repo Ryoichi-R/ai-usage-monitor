@@ -14,13 +14,14 @@ public sealed class WorkStatusViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public void Update(WorkStatusModel model, bool codex, bool claude, string? problem, DateTimeOffset now,
-        IReadOnlySet<WorkProvider>? unavailableProviders = null)
+        IReadOnlySet<WorkProvider>? unavailableProviders = null, IReadOnlyDictionary<string, DateTimeOffset>? claudeBusySince = null)
     {
         ArgumentNullException.ThrowIfNull(model);
         IsVisible = codex || claude;
         foreach (WorkStatusRowViewModel row in Rows)
             row.Update(model, row.Provider == WorkProvider.CodexDesktop ? codex : claude, problem, now,
-                problem is null || unavailableProviders is not null && !unavailableProviders.Contains(row.Provider));
+                problem is null || unavailableProviders is not null && !unavailableProviders.Contains(row.Provider),
+                row.Provider == WorkProvider.ClaudeCode ? claudeBusySince : null);
     }
 }
 
@@ -46,7 +47,8 @@ public sealed class WorkStatusRowViewModel : INotifyPropertyChanged
     public event Action<IReadOnlyList<string>>? AcknowledgeRequested;
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    internal void Update(WorkStatusModel model, bool visible, string? problem, DateTimeOffset now, bool available)
+    internal void Update(WorkStatusModel model, bool visible, string? problem, DateTimeOffset now, bool available,
+        IReadOnlyDictionary<string, DateTimeOffset>? busySince)
     {
         IsVisible = visible;
         WorkSession? latest = model.Sessions.Where(s => s.Provider == Provider)
@@ -55,7 +57,12 @@ public sealed class WorkStatusRowViewModel : INotifyPropertyChanged
         WorkStatusSummary summary = model.Summarize(Provider, now, available && received);
         NoticeIds = summary.Notices.Select(n => n.Id).ToArray();
         var parts = new List<WorkStatusPartViewModel>();
-        if (summary.Running > 0) parts.Add(new($"作業中 {summary.Running}", WorkSessionState.Running));
+        int running = summary.Running;
+        if (visible && available && busySince is not null)
+            running += model.Sessions.Count(s => s.Provider == Provider &&
+                s.State is WorkSessionState.StopCandidate or WorkSessionState.Completed &&
+                busySince.TryGetValue(s.SessionId, out var at) && at > s.At);
+        if (running > 0) parts.Add(new($"作業中 {running}", WorkSessionState.Running));
         if (summary.Waiting > 0) parts.Add(new("入力待ち", WorkSessionState.Waiting));
         if (parts.Count == 0 && available && latest?.State is WorkSessionState.StopCandidate or WorkSessionState.Completed)
             parts.Add(new("応答終了", latest.State));

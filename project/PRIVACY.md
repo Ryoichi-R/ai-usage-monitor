@@ -31,6 +31,8 @@ macOS版も、上記と同じく認証情報・使用率・生画面・account�
 
 設定を有効にし、projectごとの公式hooksを導入した場合だけ、作業開始・入力待ち・停止候補等の最小metadataをWorkStatus/state.jsonとevents/へ保存する。session/turnはhash化し、通知IDと確認状態・受信時刻・順序・providerを保持する。本文、応答、ツール引数は保存せず、transcript、認証ファイル、session JSONLは読まない。hookのstdinは最大4MiBの一時メモリで受け、必要な項目以外を捨てる。
 
+WindowsではClaudeの作業状態表示が有効な場合、終了フックを受信済みのセッションの再開を検知するため、Claudeの設定ディレクトリの `sessions/<PID>.json` を読む。ID・状態・時刻・起動種別・PIDだけを判定に使い、補助判定の結果は画面表示にだけ反映する。
+
 Codexの質問カードについては、同じhook入力のtool名・call ID・質問数、およびUserPromptSubmitの構造化回答envelope内のquestionItemIdだけを抽出する。未回答/回答済みの対応付けに使うIDはhash化し、質問文・選択肢・回答内容・通常のprompt本文を保存しない。stdinのJSON全体を一時メモリで解析するが、会話履歴やtranscriptを追加で読み取らない。
 
 Windows/Macとも既存data root配下を使用し、PC間同期や外部送信をしない。Desktop由来の判定は祖先PID・実行ファイルpath（MacはPID再利用確認のため起動時刻も使用）だけで行い、コマンドラインや環境変数を読まない。作業状態用error.logは上限1MiBでUTC・型・HResult・入力値やファイル名を含まないstackを記録する。例外message/Dataやraw payloadは記録しない。

@@ -20,7 +20,9 @@ public sealed class WindowsDesktopOrigin : IDesktopOrigin
             : relative.StartsWith("Claude_", StringComparison.OrdinalIgnoreCase) && relative.EndsWith("/app/Claude.exe", StringComparison.OrdinalIgnoreCase);
     }
 
-    public bool IsDesktopAncestor(DesktopApplication application)
+    public bool IsDesktopAncestor(DesktopApplication application) => HasDesktopAncestor(application, Environment.ProcessId);
+
+    public static bool HasDesktopAncestor(DesktopApplication application, int processId)
     {
         if (!OperatingSystem.IsWindows()) return false;
         nint snapshot = CreateToolhelp32Snapshot(2, 0);
@@ -31,7 +33,7 @@ public sealed class WindowsDesktopOrigin : IDesktopOrigin
             var entry = new ProcessEntry { Size = (uint)Marshal.SizeOf<ProcessEntry>() };
             if (!Process32First(snapshot, ref entry)) return false;
             do { parents[entry.ProcessId] = entry.ParentProcessId; } while (Process32Next(snapshot, ref entry));
-            uint id = (uint)Environment.ProcessId;
+            uint id = (uint)processId;
             string packages = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "WindowsApps");
             for (int depth = 0; depth < 24 && parents.TryGetValue(id, out uint parent) && parent != id; depth++)
             {

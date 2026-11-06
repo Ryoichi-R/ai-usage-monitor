@@ -10,12 +10,15 @@ internal sealed class WorkStatusRuntime : IAsyncDisposable
     private readonly WorkStatusCollector? _collector;
     private readonly string? _startupProblem;
     private readonly string _root;
+    private readonly Func<IReadOnlyList<WorkSession>, DateTimeOffset, IReadOnlyDictionary<string, DateTimeOffset>>? _readClaudeBusySince;
     private WorkStatusSnapshot _current = new(new(), null);
 
-    public WorkStatusRuntime(string root, Action<string, Exception?> diagnostic)
+    public WorkStatusRuntime(string root, Action<string, Exception?> diagnostic,
+        Func<IReadOnlyList<WorkSession>, DateTimeOffset, IReadOnlyDictionary<string, DateTimeOffset>>? readClaudeBusySince = null)
     {
         _root = root;
         _diagnostic = diagnostic;
+        _readClaudeBusySince = readClaudeBusySince;
         try { _collector = new(new(root)); _current = _collector.Current; }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
         {
@@ -26,14 +29,20 @@ internal sealed class WorkStatusRuntime : IAsyncDisposable
     }
 
     public WorkStatusSnapshot Current => _current;
+    public IReadOnlyDictionary<string, DateTimeOffset>? ClaudeBusySince { get; private set; }
 
-    public async Task<WorkStatusSnapshot> PollAsync(CancellationToken cancellationToken)
+    public async Task<WorkStatusSnapshot> PollAsync(CancellationToken cancellationToken, bool observeClaude = false)
     {
         if (_collector is null) return new(_current.Model, _startupProblem);
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            _current = await Task.Run(() => _collector.Poll(DateTimeOffset.UtcNow), cancellationToken).ConfigureAwait(false);
+            (_current, ClaudeBusySince) = await Task.Run(() =>
+            {
+                DateTimeOffset now = DateTimeOffset.UtcNow;
+                WorkStatusSnapshot snapshot = _collector.Poll(now);
+                return (snapshot, observeClaude ? _readClaudeBusySince?.Invoke(snapshot.Model.Sessions, now) : null);
+            }, cancellationToken).ConfigureAwait(false);
             if (_current.Problem is { } reason)
             {
                 _diagnostic(reason, null);
@@ -42,6 +51,7 @@ internal sealed class WorkStatusRuntime : IAsyncDisposable
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
         {
+            ClaudeBusySince = null;
             _current = new(_current.Model, "作業状態の取得・保存に失敗。未確認通知は保持しています。");
             Report("work-status-poll-failed", error);
         }

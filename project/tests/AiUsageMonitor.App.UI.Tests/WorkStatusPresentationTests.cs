@@ -12,6 +12,52 @@ namespace AiUsageMonitor.App.UI.Tests;
 
 public sealed partial class WorkStatusPresentationTests
 {
+    [Theory]
+    [InlineData(WorkEventKind.StopCandidate)]
+    [InlineData(WorkEventKind.Completed)]
+    public async Task ClaudeBusyRecoversFromResponseEndWithoutChangingSavedHookState(WorkEventKind stopKind)
+    {
+        string root = Directory.CreateTempSubdirectory().FullName;
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            WorkStatusCollector.WriteEvent(root, new(1, "stop", WorkProvider.ClaudeCode, "s", "",
+                stopKind, now.AddSeconds(-3), true));
+            var busySince = new Dictionary<string, DateTimeOffset>();
+            await using var runtime = new WorkStatusRuntime(root, (_, _) => { }, (_, _) => busySince);
+            var view = new WorkStatusViewModel();
+            WorkStatusRowViewModel row = view.Rows[1];
+
+            async Task Poll()
+            {
+                var snapshot = await runtime.PollAsync(CancellationToken.None, observeClaude: true);
+                view.Update(snapshot.Model, false, true, snapshot.Problem, now, snapshot.UnavailableProviders, runtime.ClaudeBusySince);
+            }
+
+            await Poll();
+            Assert.Equal("応答終了", row.Status);
+            string[] notices = [.. row.NoticeIds];
+            Assert.Single(notices);
+
+            busySince["s"] = now.AddSeconds(-2);
+            await Poll();
+            Assert.Equal("作業中 1", row.Status);
+            Assert.Equal(notices, row.NoticeIds);
+            Assert.Equal(stopKind.ToString(), Assert.Single(new WorkStatusStore(root).Load().Sessions).State.ToString());
+
+            WorkStatusCollector.WriteEvent(root, new(1, "question", WorkProvider.ClaudeCode, "s", "",
+                WorkEventKind.Waiting, now.AddSeconds(-1), true, InputPending: true));
+            await Poll();
+            Assert.Equal("入力待ち", row.Status);
+
+            WorkStatusCollector.WriteEvent(root, new(1, "new-stop", WorkProvider.ClaudeCode, "s", "",
+                WorkEventKind.StopCandidate, now, true));
+            await Poll();
+            Assert.Equal("応答終了", row.Status);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
     [Fact]
     public void ExplicitClaudeQuestionKeepsTheNormalInputWaitingTextAfterTwelveHours()
     {

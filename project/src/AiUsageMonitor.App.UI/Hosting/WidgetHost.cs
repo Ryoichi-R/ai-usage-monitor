@@ -98,7 +98,7 @@ public sealed class WidgetHost : IAsyncDisposable
             ShowClaude = _settings.ShowClaudeUsage,
         };
         ConfigureCodexViewModels();
-        _workRuntime = new(_services.AppPaths.WorkStatusDirectory, _services.Diagnostic);
+        _workRuntime = new(_services.AppPaths.WorkStatusDirectory, _services.Diagnostic, _services.ReadClaudeBusySince);
         foreach (WorkStatusRowViewModel row in _viewModel.WorkStatus.Rows)
             row.AcknowledgeRequested += ids => _ = AcknowledgeWorkStatusAsync(ids);
         UpdateWorkStatus();
@@ -834,7 +834,8 @@ public sealed class WidgetHost : IAsyncDisposable
         string[] previousIds = [.. _viewModel.WorkStatus.Rows.SelectMany(row => row.NoticeIds)];
         var current = _workRuntime.Current;
         _viewModel.WorkStatus.Update(current.Model, _settings.ShowCodexWorkStatus,
-            _settings.ShowClaudeWorkStatus, current.Problem, DateTimeOffset.UtcNow, current.UnavailableProviders);
+            _settings.ShowClaudeWorkStatus, current.Problem, DateTimeOffset.UtcNow, current.UnavailableProviders,
+            _workRuntime.ClaudeBusySince);
         if (_tray is not null && !previousIds.SequenceEqual(_viewModel.WorkStatus.Rows.SelectMany(row => row.NoticeIds)))
             _tray.Menu = CreateTrayMenu();
     }
@@ -848,7 +849,7 @@ public sealed class WidgetHost : IAsyncDisposable
             {
                 if (_workRuntime is not null && (_settings.ShowCodexWorkStatus || _settings.ShowClaudeWorkStatus))
                 {
-                    await _workRuntime.PollAsync(cancellationToken);
+                    await _workRuntime.PollAsync(cancellationToken, _settings.ShowClaudeWorkStatus);
                     Dispatcher.UIThread.Post(UpdateWorkStatus);
                 }
             } while (await timer.WaitForNextTickAsync(cancellationToken));

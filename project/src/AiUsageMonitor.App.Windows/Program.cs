@@ -71,6 +71,8 @@ internal static class WindowsComposition
             AppPaths = paths,
             WorkStatusOnly = testRoot is not null,
             UserProfile = testRoot ?? paths.UserHomeDirectory,
+            ReadClaudeBusySince = testRoot is null
+                ? new ClaudeDesktopActivity(paths.UserHomeDirectory, Environment.GetEnvironmentVariable("CLAUDE_CONFIG_DIR")).ReadBusySince : null,
             InheritedCodexHome = testRoot is null ? Environment.GetEnvironmentVariable("CODEX_HOME") : null,
             Diagnostic = diagnostics.Write,
             Startup = testRoot is null ? new WindowsStartupService() : new AiUsageMonitor.Platform.NoStartupService(),
