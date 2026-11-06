@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\AiUsageMonitor.Platform.Mac\AiUsageMonitor.Platform.Mac.csproj" />
+    <ProjectReference Include="../../src/AiUsageMonitor.WorkStatus/AiUsageMonitor.WorkStatus.csproj" />
   </ItemGroup>
 
 </Project>

@@ -9,6 +9,7 @@ using AiUsageMonitor.Core.Settings;
 using AiUsageMonitor.Core.Usage;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Automation;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
@@ -202,7 +203,7 @@ public partial class SettingsWindow : Window
         _settings = (_placementMode == PlacementMode.Custom
             ? controls with { PlacementMode = PlacementMode.Custom }
             : PlacementSettingsComposer.UsePreset(controls)).Normalized();
-        ValidationMessage.Text = string.Empty;
+        ClearValidationText();
         Saved = true;
         Close(true);
     }
@@ -294,7 +295,7 @@ public partial class SettingsWindow : Window
         if (path is not null)
         {
             selected.CodexHomePath = path;
-            ValidationMessage.Text = string.Empty;
+            ClearValidationText();
         }
     }
 
@@ -581,7 +582,18 @@ public partial class SettingsWindow : Window
     private void ClearValidation()
     {
         ValidationMessage.Foreground = Brushes.Crimson;
-        ValidationMessage.Text = string.Empty;
+        ClearValidationText();
+    }
+
+    private void ClearValidationText()
+    {
+        // Avalonia 12.1.2 on macOS can build an announcement dictionary with a nil
+        // string when an assertive live region changes to empty. Clearing an error
+        // has nothing to announce; retain the priority for the next actual error.
+        AutomationLiveSetting live = AutomationProperties.GetLiveSetting(ValidationMessage);
+        AutomationProperties.SetLiveSetting(ValidationMessage, AutomationLiveSetting.Off);
+        try { ValidationMessage.Text = string.Empty; }
+        finally { AutomationProperties.SetLiveSetting(ValidationMessage, live); }
     }
 
     private static string FormatChannelTime(DateTimeOffset? value) =>

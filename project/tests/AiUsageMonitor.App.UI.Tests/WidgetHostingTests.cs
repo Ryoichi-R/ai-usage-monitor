@@ -309,22 +309,8 @@ public sealed class WidgetHostingTests
         using var stream = new MemoryStream();
         bitmap.Save(stream, PngBitmapEncoderOptions.Default);
         stream.Position = 0;
-        var services = new WidgetHostServices
-        {
-            AppPaths = paths,
-            WorkStatusOnly = true,
-            Startup = new FakeStartup(),
-            ShellOpener = new FakeShell(),
-            CreateLayerController = () => new FakeLayer(),
-            ClaudeSourceFactory = _ => throw new InvalidOperationException("No usage probes."),
-            CreateClaudeListener = () => throw new InvalidOperationException("No usage probes."),
-            ClaudeWorkspace = new AppPathClaudeWorkspace(paths),
-            ClaudeBridgePath = Path.Combine(root, "bridge"),
-            ReadmePath = Path.Combine(root, "README.md"),
-            UserProfile = root,
-            StatusIcon = new WindowIcon(stream),
-            Diagnostic = (code, error) => codes.Enqueue(code + ":" + error?.GetType().Name + ":" + error?.HResult),
-        };
+        WidgetHostServices services = WorkStatusTrayServices(paths, root, new WindowIcon(stream),
+            (code, error) => codes.Enqueue(code + ":" + error?.GetType().Name + ":" + error?.HResult));
         await using var host = new WidgetHost(services, () => { });
         await host.StartAsync();
         NativeMenu firstMenu = Assert.IsType<NativeMenu>(host.TrayMenu);
@@ -338,6 +324,7 @@ public sealed class WidgetHostingTests
         if (OperatingSystem.IsMacOS())
         {
             Assert.Same(firstMenu, host.TrayMenu);
+            Assert.Same(item, Assert.Single(firstMenu.Items.OfType<NativeMenuItem>(), i => i.Header == item.Header));
             RaiseMenuEvent(firstMenu, "RaiseNeedsUpdate");
         }
         else Assert.NotSame(firstMenu, host.TrayMenu);
@@ -366,6 +353,54 @@ public sealed class WidgetHostingTests
             Assert.False(item.IsEnabled);
         }
     }
+
+    [AvaloniaFact]
+    public async Task TrayCommandEnabledStateFollowsFirstNoticeAndAcknowledgement()
+    {
+        string parent = Environment.GetEnvironmentVariable("AI_USAGE_MONITOR_TEST_ARTIFACTS_ROOT") ?? AppContext.BaseDirectory;
+        string root = Path.Combine(parent, "work-tray-enabled", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        IAppPathProvider paths = new TestPaths(root);
+        var store = new WorkStatusStore(paths.WorkStatusDirectory);
+        store.Save(new WorkStatusModel());
+        using var bitmap = new RenderTargetBitmap(new PixelSize(16, 16));
+        using var stream = new MemoryStream();
+        bitmap.Save(stream, PngBitmapEncoderOptions.Default);
+        stream.Position = 0;
+        await using var host = new WidgetHost(WorkStatusTrayServices(paths, root, new WindowIcon(stream)), () => { });
+        await host.StartAsync();
+        NativeMenuItem FindItem() => Assert.Single(host.TrayMenu!.Items.OfType<NativeMenuItem>(),
+            item => item.Header == "Codex Desktopの通知を確認済みにする");
+
+        Assert.False(FindItem().IsEnabled);
+        WorkStatusCollector.WriteEvent(paths.WorkStatusDirectory,
+            new(1, "first", WorkProvider.CodexDesktop, "first", "t", WorkEventKind.Interrupted, DateTimeOffset.UtcNow, true));
+        await WaitForAsync(() => host.ViewModel!.WorkStatus.Rows[0].NoticeIds.Count == 1);
+        NativeMenuItem enabledItem = FindItem();
+        Assert.True(enabledItem.IsEnabled);
+        ((INativeMenuItemExporterEventsImplBridge)enabledItem).RaiseClicked();
+        await WaitForAsync(() => host.ViewModel!.WorkStatus.Rows[0].NoticeIds.Count == 0);
+        Assert.Single(store.Load().AcknowledgedIds);
+        Assert.False(FindItem().IsEnabled);
+    }
+
+    private static WidgetHostServices WorkStatusTrayServices(IAppPathProvider paths, string root, WindowIcon icon,
+        Action<string, Exception?>? diagnostic = null) => new()
+        {
+            AppPaths = paths,
+            WorkStatusOnly = true,
+            Startup = new FakeStartup(),
+            ShellOpener = new FakeShell(),
+            CreateLayerController = () => new FakeLayer(),
+            ClaudeSourceFactory = _ => throw new InvalidOperationException("No usage probes."),
+            CreateClaudeListener = () => throw new InvalidOperationException("No usage probes."),
+            ClaudeWorkspace = new AppPathClaudeWorkspace(paths),
+            ClaudeBridgePath = Path.Combine(root, "bridge"),
+            ReadmePath = Path.Combine(root, "README.md"),
+            UserProfile = root,
+            StatusIcon = icon,
+            Diagnostic = diagnostic ?? ((_, _) => { }),
+        };
 
     private static void RaiseMenuEvent(NativeMenu menu, string eventMethod) =>
         typeof(NativeMenu).GetMethods(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)

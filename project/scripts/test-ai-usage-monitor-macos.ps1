@@ -20,6 +20,9 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'BUILD_CONTRACT_FAILED' }
     & (Join-Path $PSScriptRoot 'test-version-info-contract.ps1') -FixtureRoot (Join-Path $output 'version-fixtures')
     if ($LASTEXITCODE -ne 0) { throw 'VERSION_CONTRACT_FAILED' }
+    $signingFixture = Join-Path $root ('artifacts/signing-contract-internal-test-readiness-blocked-' + [Guid]::NewGuid().ToString('N'))
+    & (Join-Path $PSScriptRoot 'test-macos-signing-contract.ps1') -FixtureRoot $signingFixture
+    if ($LASTEXITCODE -ne 0) { throw 'SIGNING_CONTRACT_FAILED' }
     & dotnet restore $solution --nologo --artifacts-path $artifacts $isolation
     if ($LASTEXITCODE -ne 0) { throw 'RESTORE_FAILED' }
     & dotnet build $solution -c Release --no-restore --nologo --artifacts-path $artifacts $isolation
