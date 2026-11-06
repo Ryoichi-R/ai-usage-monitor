@@ -331,10 +331,16 @@ public sealed class WidgetHostingTests
         NativeMenuItem item = Assert.Single(firstMenu.Items.OfType<NativeMenuItem>(), i => i.Header == "Codex Desktopの通知を確認済みにする");
         Assert.Equal(2, Assert.IsAssignableFrom<IReadOnlyList<string>>(item.CommandParameter).Count);
         Assert.True(item.Command!.CanExecute(item.CommandParameter));
+        if (OperatingSystem.IsMacOS()) RaiseMenuEvent(firstMenu, "RaiseOpening");
         WorkStatusCollector.WriteEvent(paths.WorkStatusDirectory,
             new(1, "new", WorkProvider.CodexDesktop, "new", "t", WorkEventKind.Interrupted, now.AddMilliseconds(1), true));
         await WaitForAsync(() => host.ViewModel!.WorkStatus.Rows[0].NoticeIds.Count == 3);
-        Assert.NotSame(firstMenu, host.TrayMenu);
+        if (OperatingSystem.IsMacOS())
+        {
+            Assert.Same(firstMenu, host.TrayMenu);
+            RaiseMenuEvent(firstMenu, "RaiseNeedsUpdate");
+        }
+        else Assert.NotSame(firstMenu, host.TrayMenu);
         // The Win32 presenter invokes the command without NativeMenu.Opening.
         Assert.Equal(2, Assert.IsAssignableFrom<IReadOnlyList<string>>(item.CommandParameter).Count);
         bool requested = false;
@@ -347,7 +353,23 @@ public sealed class WidgetHostingTests
         Assert.Equal(0, codex.Unknown);
         Assert.Equal("new", Assert.Single(codex.Notices).SessionId);
         Assert.Equal(1, saved.Summarize(WorkProvider.ClaudeCode, DateTimeOffset.UtcNow, true).Candidates);
+        if (OperatingSystem.IsMacOS())
+        {
+            await WaitForAsync(() => host.ViewModel!.WorkStatus.Rows[0].NoticeIds.Count == 1);
+            RaiseMenuEvent(firstMenu, "RaiseClosed");
+            RaiseMenuEvent(firstMenu, "RaiseNeedsUpdate");
+            Assert.Single(Assert.IsAssignableFrom<IReadOnlyList<string>>(item.CommandParameter));
+            Assert.True(item.IsEnabled);
+            ((INativeMenuItemExporterEventsImplBridge)item).RaiseClicked();
+            await WaitForAsync(() => host.ViewModel!.WorkStatus.Rows[0].NoticeIds.Count == 0);
+            Assert.Same(firstMenu, host.TrayMenu);
+            Assert.False(item.IsEnabled);
+        }
     }
+
+    private static void RaiseMenuEvent(NativeMenu menu, string eventMethod) =>
+        typeof(NativeMenu).GetMethods(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            .Single(method => method.Name.EndsWith("." + eventMethod, StringComparison.Ordinal)).Invoke(menu, null);
 
     private static async Task WaitForAsync(Func<bool> condition, Func<string>? details = null)
     {
