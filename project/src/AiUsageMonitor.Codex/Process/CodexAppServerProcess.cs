@@ -78,8 +78,10 @@ public sealed class CodexAppServerProcess : IAsyncDisposable
                     throw;
                 }
 
-                _stderrTask = DrainStderrAsync(_process.StandardError, _processLifetime.Token);
-                _connection = new JsonRpcConnection(_process.StandardOutput, _process.StandardInput);
+                _stderrTask = DrainStderrAsync(ReadOnDedicatedThread(_process.StandardError, "codex-app-server-stderr"),
+                    _processLifetime.Token);
+                _connection = new JsonRpcConnection(
+                    ReadOnDedicatedThread(_process.StandardOutput, "codex-app-server-stdout"), _process.StandardInput);
             }
             _connection.Start();
 
@@ -111,6 +113,15 @@ public sealed class CodexAppServerProcess : IAsyncDisposable
             .InformationalVersion;
         return string.IsNullOrWhiteSpace(version) ? "0.0.0" : version;
     }
+
+    // Windows redirection pipes cannot do overlapped I/O, so ReadAsync would hold a thread-pool thread
+    // until the long-lived child writes. Two such reads per child exhaust the pool once several
+    // app-servers run, delaying startup timers and response continuations by seconds.
+    private static StreamReader ReadOnDedicatedThread(StreamReader processReader, string threadName) =>
+        OperatingSystem.IsWindows()
+            ? new StreamReader(new DedicatedThreadReadStream(processReader.BaseStream, threadName),
+                processReader.CurrentEncoding, detectEncodingFromByteOrderMarks: true, bufferSize: 4096)
+            : processReader;
 
     private static async Task DrainStderrAsync(StreamReader reader, CancellationToken cancellationToken)
     {

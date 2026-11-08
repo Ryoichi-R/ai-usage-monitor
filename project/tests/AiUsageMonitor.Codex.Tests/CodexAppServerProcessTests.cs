@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Reflection;
 using AiUsageMonitor.Codex.Client;
 using AiUsageMonitor.Codex.Process;
@@ -17,6 +18,37 @@ public sealed class CodexAppServerProcessTests
         await server.StartAsync(executable, TimeSpan.FromSeconds(5), timeout.Token);
         await server.DisposeAsync();
         await server.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task IdleAppServersDoNotStarveTheThreadPool()
+    {
+        // Each running app-server keeps a stdout and a stderr read pending. Those reads must not hold
+        // thread-pool threads, or startup timers and response continuations stall for seconds.
+        // Starting them together is the failing shape: with pool-held reads, 2 x count blocked threads
+        // exceed the minimum worker count before the initialize continuations can run.
+        ThreadPool.GetMinThreads(out int minWorkers, out _);
+        int count = Math.Max(12, minWorkers * 3 / 2);
+        string executable = FindFakeServer();
+        var servers = Enumerable.Range(0, count).Select(_ => new CodexAppServerProcess()).ToArray();
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(90));
+            var watch = Stopwatch.StartNew();
+            await Task.WhenAll(servers.Select(server =>
+                server.StartAsync(executable, TimeSpan.FromSeconds(60), timeout.Token)));
+            TimeSpan startup = watch.Elapsed;
+
+            TimeSpan worst = DedicatedThreadReadStreamTests.MeasureWorstThreadPoolDispatch(probes: 20);
+            Assert.True(startup < TimeSpan.FromSeconds(6),
+                $"Starting {count} app-servers together took {startup.TotalMilliseconds:F0} ms.");
+            Assert.True(worst < TimeSpan.FromSeconds(1),
+                $"A thread-pool work item waited {worst.TotalMilliseconds:F0} ms with {count} idle app-servers.");
+        }
+        finally
+        {
+            await Task.WhenAll(servers.Select(server => server.DisposeAsync().AsTask()));
+        }
     }
 
     [Fact]
