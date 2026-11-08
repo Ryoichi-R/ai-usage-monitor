@@ -35,6 +35,8 @@ WindowsではClaudeの作業状態表示が有効な場合、終了フックを�
 
 Codexの質問カードについては、同じhook入力のtool名・call ID・質問数、およびUserPromptSubmitの構造化回答envelope内のquestionItemIdだけを抽出する。未回答/回答済みの対応付けに使うIDはhash化し、質問文・選択肢・回答内容・通常のprompt本文を保存しない。stdinのJSON全体を一時メモリで解析するが、会話履歴やtranscriptを追加で読み取らない。
 
+接続設定画面で利用者がClaude Codeのprojectを選び「確定完了の条件」を確認した場合だけ、そのprojectの.claude/settings.json・settings.local.json、ユーザーのClaude設定（CLAUDE_CONFIG_DIRが絶対pathならその配下、それ以外は.claude/settings.json）、Claude Codeの管理設定ファイルとmanaged-settings.dを読み取り、hooksのStop定義とenabledPluginsだけを判定に使う。Windowsは管理ポリシーのレジストリキーの存在、Macは構成プロファイルのファイルの存在だけを確認し、値は読まない。判定結果は画面と生成する設定例にだけ反映し、設定内容・permissions・環境変数の値は保存しない。
+
 Windows/Macとも既存data root配下を使用し、PC間同期や外部送信をしない。Desktop由来の判定は祖先PID・実行ファイルpath（MacはPID再利用確認のため起動時刻も使用）だけで行い、コマンドラインや環境変数を読まない。作業状態用error.logは上限1MiBでUTC・型・HResult・入力値やファイル名を含まないstackを記録する。例外message/Dataやraw payloadは記録しない。
 
 表示OFF・再起動では未確認通知を消さず、本人の確認と保存成功後だけ確認済みにする。旧版の状態を本人が選択して移行する場合は、旧snapshotをlegacy-backupsへ保持し通知だけを引き継ぐ。[保存と制限](docs/work-status.md)を参照。

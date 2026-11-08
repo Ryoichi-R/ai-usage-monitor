@@ -28,7 +28,8 @@ public static class HookNormalizer
             "PostToolUseFailure" when provider == WorkProvider.ClaudeCode && Text(input, "tool_name") == "AskUserQuestion" => WorkEventKind.Activity,
             "PreToolUse" or "PostToolUse" => WorkEventKind.Activity,
             "PermissionRequest" => WorkEventKind.Waiting,
-            "Stop" => stopMayComplete && knownInactive ? WorkEventKind.Completed : WorkEventKind.StopCandidate,
+            // Only Claude Stop hooks connected after StopHookInspector found no other blocking Stop hook may complete.
+            "Stop" => stopMayComplete && knownInactive && provider == WorkProvider.ClaudeCode ? WorkEventKind.Completed : WorkEventKind.StopCandidate,
             "StopFailure" when provider == WorkProvider.ClaudeCode => WorkEventKind.Failed,
             "Interrupt" => WorkEventKind.Interrupted,
             "SessionEnd" => WorkEventKind.Ended,

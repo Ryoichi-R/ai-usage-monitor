@@ -6,12 +6,18 @@ namespace AiUsageMonitor.WorkStatus;
 
 public static class HookExamples
 {
+    /// <summary>Bridge argument that lets a Claude Stop with stop_hook_active=false confirm completion.</summary>
+    public const string StopMayCompleteFlag = "--stop-may-complete";
+
+    /// <param name="stopMayComplete">Pass true only when StopHookInspector returned Eligible for the target project.</param>
     public static string Create(WorkProvider provider, string bridgePath, string stateRoot,
-        bool windows, Version? claudeVersion = null)
+        bool windows, Version? claudeVersion = null, bool stopMayComplete = false)
     {
         bool Absolute(string value) => Path.IsPathFullyQualified(value) || !windows && value.StartsWith('/');
         if (!Enum.IsDefined(provider) || !Absolute(bridgePath) || !Absolute(stateRoot))
             throw new ArgumentException("WORK_STATUS_CONNECTION_PATH_INVALID");
+        if (stopMayComplete && provider != WorkProvider.ClaudeCode)
+            throw new ArgumentException("WORK_STATUS_COMPLETION_CLAUDE_ONLY");
         if (provider == WorkProvider.ClaudeCode && (claudeVersion is null || claudeVersion < new Version(2, 1, 295)))
             throw new ArgumentException("WORK_STATUS_CLAUDE_VERSION_UNVERIFIED");
         string[] names = provider == WorkProvider.CodexDesktop
@@ -20,8 +26,11 @@ public static class HookExamples
         var hooks = new Dictionary<string, object>();
         foreach (string name in names)
         {
+            string[] args = stopMayComplete && name == "Stop"
+                ? [provider.ToString(), stateRoot, StopMayCompleteFlag]
+                : [provider.ToString(), stateRoot];
             Dictionary<string, object> handler = provider == WorkProvider.ClaudeCode
-                ? new() { ["type"] = "command", ["command"] = bridgePath, ["args"] = new[] { provider.ToString(), stateRoot }, ["timeout"] = 3, ["onFailure"] = "continue" }
+                ? new() { ["type"] = "command", ["command"] = bridgePath, ["args"] = args, ["timeout"] = 3, ["onFailure"] = "continue" }
                 : new() { ["type"] = "command", ["command"] = CodexCommand(bridgePath, stateRoot, windows), ["timeout"] = 3 };
             var group = new Dictionary<string, object> { ["hooks"] = new[] { handler } };
             if (name == "Notification") group["matcher"] = "permission_prompt|idle_prompt|elicitation_dialog|elicitation_url_dialog";

@@ -59,4 +59,4 @@ AI Usage Monitorの第一者コードはMIT Licenseで提供します。著作�
 
 ## 作業状態監視
 
-利用枠とは別に、Codex Desktop・Claude Codeの作業状態を表示する段階提供の機能を追加している。既定OFFで、project単位の公式hooksが必要。確定完了の判定とMacでの実機受入は未完了。[詳細](project/docs/work-status.md)。
+利用枠とは別に、Codex Desktop・Claude Codeの作業状態を表示する段階提供の機能を追加している。既定OFFで、project単位の公式hooksが必要。Claude Codeの確定完了は接続時に他のStopフックがないことを確認したprojectに限って判定するが、実機受入は未完了。Macの配布受入と統合版の実機回帰も未完了。[詳細](project/docs/work-status.md)。

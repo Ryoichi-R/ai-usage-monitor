@@ -14,8 +14,11 @@ public static class BridgeCommand
         ArgumentNullException.ThrowIfNull(output);
         try
         {
-            if (args.Length != 2 || !Enum.TryParse(args[0], out WorkProvider provider) || !Enum.IsDefined(provider) ||
+            if (args.Length is not (2 or 3) || !Enum.TryParse(args[0], out WorkProvider provider) || !Enum.IsDefined(provider) ||
                 !Path.IsPathFullyQualified(args[1])) return 0;
+            // The optional flag is written only by HookExamples after StopHookInspector approved the Claude project.
+            bool stopMayComplete = args.Length == 3;
+            if (stopMayComplete && (args[2] != HookExamples.StopMayCompleteFlag || provider != WorkProvider.ClaudeCode)) return 0;
             using var buffer = new MemoryStream();
             byte[] chunk = new byte[8192];
             int count;
@@ -27,7 +30,7 @@ public static class BridgeCommand
             DesktopApplication application = provider == WorkProvider.CodexDesktop ? DesktopApplication.Codex : DesktopApplication.Claude;
             if (origin is null || !origin.IsDesktopAncestor(application)) return 0;
             using var document = JsonDocument.Parse(buffer.ToArray());
-            WorkStatusEvent? value = HookNormalizer.Normalize(document.RootElement, provider, true, now);
+            WorkStatusEvent? value = HookNormalizer.Normalize(document.RootElement, provider, true, now, stopMayComplete);
             if (value is not null) WorkStatusCollector.WriteEvent(args[1], value);
         }
         catch (Exception) { /* No host decisions or private exception output. */ }

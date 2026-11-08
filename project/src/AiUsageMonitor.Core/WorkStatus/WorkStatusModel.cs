@@ -125,10 +125,15 @@ public sealed class WorkStatusModel
         if (inputPending) state = WorkSessionState.Waiting;
         if (value.Kind == WorkEventKind.Ended && value.Provider == WorkProvider.CodexDesktop)
             RetireQuestions(value.SessionId);
-        if (value.Kind is WorkEventKind.Started or WorkEventKind.Activity or WorkEventKind.Completed)
+        // A Stop-derived completion is retracted when the same turn continues before the next prompt:
+        // tool activity, a new wait, or another Stop (stop_hook_active=true arrives as a candidate).
+        bool retracts = previous?.CompletionRetractable == true &&
+            value.Kind is WorkEventKind.Activity or WorkEventKind.Waiting or WorkEventKind.StopCandidate;
+        bool clearsCandidates = value.Kind is WorkEventKind.Started or WorkEventKind.Activity or WorkEventKind.Completed;
+        if (clearsCandidates || retracts)
             Notices.RemoveAll(n => n.Provider == value.Provider && n.SessionId == value.SessionId &&
-                (n.State == WorkSessionState.StopCandidate || value.Kind == WorkEventKind.Activity &&
-                    previous?.CompletionRetractable == true && n.TurnId == turn && n.State == WorkSessionState.Completed));
+                (clearsCandidates && n.State == WorkSessionState.StopCandidate ||
+                    retracts && n.TurnId == turn && n.State == WorkSessionState.Completed));
         var session = new WorkSession(value.Provider, value.SessionId, turn, state, value.At,
             value.Order, value.Kind == WorkEventKind.Completed && value.CompletionRetractable, inputPending, lastOrdinaryPromptAt);
         if (index >= 0) Sessions[index] = session; else Sessions.Add(session);
