@@ -26,7 +26,8 @@ public sealed class CodexWaitPresentationTests
         var view = new WorkStatusViewModel();
         view.Update(model, true, false, null, now.AddSeconds(3));
         Assert.Equal("質問待ち / 権限確認中", view.Rows[0].Status);
-        Assert.All(view.Rows[0].StatusParts, part => Assert.True(part.IsWaiting));
+        Assert.Equal([true, false], view.Rows[0].StatusParts.Select(part => part.IsWaiting));
+        Assert.Equal([false, true], view.Rows[0].StatusParts.Select(part => part.IsRunning));
         // Permission waits expire, but unanswered questions do not.
         view.Update(model, true, false, null, now.AddHours(12));
         Assert.Equal("質問待ち", view.Rows[0].Status);

@@ -48,14 +48,35 @@ public sealed class WorkStatusStore(string root)
                 stream.Flush(true);
             }
             WorkStatusPaths.RejectLinks(path);
-            // MoveFileEx overwrite rejects an open destination even when it shares DELETE.
-            // ReplaceFile preserves the snapshot while readers retain their original handle.
-            if (OperatingSystem.IsWindows() && File.Exists(path)) File.Replace(temporary, path, null);
-            else File.Move(temporary, path, true);
+            ReplaceSnapshot(temporary, path);
         }
         finally
         {
             if (File.Exists(temporary) && File.Exists(path)) File.Delete(temporary);
+        }
+    }
+
+    private static void ReplaceSnapshot(string temporary, string path)
+    {
+        for (int attempt = 0; ; attempt++)
+        {
+            try
+            {
+                // MoveFileEx overwrite rejects an open destination even when it shares DELETE.
+                // ReplaceFile preserves the snapshot while readers retain their original handle.
+                // File.Exists is re-evaluated on every attempt: after ERROR_UNABLE_TO_MOVE_REPLACEMENT
+                // without a backup the destination is gone and only a plain move can finish the save.
+                if (OperatingSystem.IsWindows() && File.Exists(path)) File.Replace(temporary, path, null);
+                else File.Move(temporary, path, true);
+                return;
+            }
+            // On-access scanners and handles without FILE_SHARE_DELETE can briefly hold the destination
+            // just after the previous save. Retry only sharing/lock violations and the ReplaceFile results
+            // that keep the replacement file (1175 unable to remove replaced, 1176 unable to move
+            // replacement); permissions and other failures still fail closed. About 1.3 s in total.
+            catch (IOException error) when (OperatingSystem.IsWindows() && attempt < 15 &&
+                (error.HResult & 0xffff) is 32 or 33 or 1175 or 1176)
+            { Thread.Sleep(Math.Min(20 * (attempt + 1), 100)); }
         }
     }
 
@@ -66,9 +87,10 @@ public sealed class WorkStatusStore(string root)
             try { return new FileStream(WorkStatusPaths.Inside(Root, path), FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete); }
             // ReplaceFile briefly owns the replacement handle exclusively. Retry only
             // Windows missing-file/sharing/lock races; permissions and corrupt state still fail closed.
-            catch (IOException error) when (OperatingSystem.IsWindows() && attempt < 5 &&
+            // About 400 ms in total: on-access scanners can hold the replaced file longer than ReplaceFile itself.
+            catch (IOException error) when (OperatingSystem.IsWindows() && attempt < 10 &&
                 (error.HResult & 0xffff) is 2 or 32 or 33)
-            { Thread.Sleep(10 * (attempt + 1)); }
+            { Thread.Sleep(Math.Min(10 * (attempt + 1), 50)); }
         }
     }
     public static WorkStatusModel Copy(WorkStatusModel value) =>

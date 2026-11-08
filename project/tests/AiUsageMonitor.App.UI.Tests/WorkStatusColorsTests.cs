@@ -13,7 +13,9 @@ namespace AiUsageMonitor.App.UI.Tests;
 
 public sealed partial class WorkStatusPresentationTests
 {
-    private static readonly Color[] IndicatorColors = [Color.Parse("#FFFFD54F"), Color.Parse("#FFFF6B6B"), Colors.White];
+    // 作業中 / 質問待ち / 権限確認中 (agent-side, so yellow) / 応答終了
+    private static readonly Color[] IndicatorColors =
+        [Color.Parse("#FFFFD54F"), Color.Parse("#FFFF6B6B"), Color.Parse("#FFFFD54F"), Colors.White];
     [AvaloniaTheory]
     [InlineData(WidgetDisplayMode.Standard, 100)]
     [InlineData(WidgetDisplayMode.Compact, 100)]
@@ -25,6 +27,8 @@ public sealed partial class WorkStatusPresentationTests
         var model = new WorkStatusModel();
         for (int i = 0; i < 3; i++)
             model.Apply(new(1, "start-" + i, WorkProvider.CodexDesktop, "running-" + i, "turn", WorkEventKind.Started, now, true));
+        model.Apply(new(1, "question", WorkProvider.CodexDesktop, "question", "turn", WorkEventKind.QuestionOpened, now, true,
+            QuestionIds: ["0123456789ABCDEF01234567"]));
         model.Apply(new(1, "wait", WorkProvider.CodexDesktop, "waiting", "turn", WorkEventKind.Waiting, now, true));
         model.Apply(new(1, "stop", WorkProvider.ClaudeCode, "ended", "turn", WorkEventKind.StopCandidate, now, true));
         var usage = MainWindowTestSupport.CreateMaxDisplayViewModel();
@@ -44,18 +48,18 @@ public sealed partial class WorkStatusPresentationTests
         try
         {
             var circles = StatusCircles(window);
-            Assert.Equal(3, circles.Length);
+            Assert.Equal(4, circles.Length);
             Assert.Equal(IndicatorColors, circles.Select(circle => Assert.IsAssignableFrom<ISolidColorBrush>(circle.Fill).Color));
             var text = window.GetVisualDescendants().OfType<TextBlock>()
                 .Where(block => block.Classes.Contains("work-status-text")).ToArray();
-            Assert.Equal(5, text.Length);
+            Assert.Equal(6, text.Length);
             Assert.All(text, block =>
             {
                 Assert.Equal(Color.Parse(settings.MutedColor), Assert.IsAssignableFrom<ISolidColorBrush>(block.Foreground).Color);
                 Assert.True(block.Bounds.Width > 0);
                 Assert.True(MainWindowTestSupport.BoundsIn(block, window).Right <= window.Bounds.Width + 1);
             });
-            Assert.Equal("作業中 3 / 権限確認中", usage.WorkStatus.Rows[0].Status);
+            Assert.Equal("作業中 3 / 質問待ち / 権限確認中", usage.WorkStatus.Rows[0].Status);
             Assert.Equal("応答終了", usage.WorkStatus.Rows[1].Status);
             Assert.DoesNotContain(window.GetVisualDescendants().OfType<TextBlock>(), block => block.Text?.Contains('!') == true);
 

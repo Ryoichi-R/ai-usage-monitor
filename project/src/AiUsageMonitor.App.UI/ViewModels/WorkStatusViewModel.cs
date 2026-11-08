@@ -66,7 +66,8 @@ public sealed class WorkStatusRowViewModel : INotifyPropertyChanged
         if (Provider == WorkProvider.CodexDesktop)
         {
             if (summary.QuestionWaiting > 0) parts.Add(new("質問待ち", WorkSessionState.Waiting));
-            if (summary.PermissionWaiting > 0) parts.Add(new("権限確認中", WorkSessionState.Waiting));
+            // A permission check is part of the agent's own turn, not user input, so it uses the running (yellow) indicator.
+            if (summary.PermissionWaiting > 0) parts.Add(new("権限確認中", WorkSessionState.Running));
         }
         else if (summary.Waiting > 0) parts.Add(new("入力待ち", WorkSessionState.Waiting));
         if (parts.Count == 0 && available && latest?.State is WorkSessionState.StopCandidate or WorkSessionState.Completed)
