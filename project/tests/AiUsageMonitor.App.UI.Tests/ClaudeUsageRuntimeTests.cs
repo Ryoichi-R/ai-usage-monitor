@@ -425,8 +425,41 @@ public sealed class ClaudeUsageRuntimeTests
             observedAt,
             "test");
 
+    [Fact]
+    public async Task SkippedPollRetainsAcquisitionDiagnosticAndRecoveryClearsIt()
+    {
+        UsageSnapshot failure = UsageSnapshot.Loading(UsageProvider.Claude, Now) with
+        {
+            Availability = UsageAvailability.Error,
+            Reason = ClaudeUsageFailure.ScreenParseFailed,
+        };
+        var source = new FixedSource(failure);
+        var diagnostics = new List<string>();
+        var runtime = new ClaudeUsageRuntime(_ => source, diagnostics.Add);
+        runtime.Configure(Configuration("claude-a"), Now);
+
+        await runtime.RefreshAsync(ClaudeUsageAcquisitionMode.OfficialCliOnly, false, Now, TestContext.Current.CancellationToken);
+        int logged = diagnostics.Count;
+        DateTimeOffset deferredAt = Now.AddSeconds(20);
+        await runtime.RefreshAsync(ClaudeUsageAcquisitionMode.OfficialCliOnly, false, deferredAt, TestContext.Current.CancellationToken);
+        Assert.Equal(1, source.CallCount);
+        Assert.Equal(logged, diagnostics.Count);
+        Assert.Equal(Now, runtime.CurrentHealth(deferredAt).ActiveLastAttemptAt);
+        Assert.Equal(ClaudeUsageFailure.ScreenParseFailed, runtime.CurrentHealth(deferredAt).ActiveFailureReason);
+
+        DateTimeOffset recoveredAt = Now.AddMinutes(2);
+        source.Next = Snapshot(40, recoveredAt);
+        await runtime.RefreshAsync(ClaudeUsageAcquisitionMode.OfficialCliOnly, false, recoveredAt, TestContext.Current.CancellationToken);
+        Assert.Null(runtime.CurrentHealth(recoveredAt).ActiveFailureReason);
+        Assert.Equal(recoveredAt, runtime.Current(recoveredAt).Snapshot.LastSuccessfulAt);
+        Assert.Equal(
+            ["claude-acquisition:USAGE_SCREEN_PARSE_FAILED", "claude-acquisition:AVAILABLE"],
+            diagnostics.Where(code => code.StartsWith("claude-acquisition:", StringComparison.Ordinal)));
+    }
+
     private sealed class FixedSource(UsageSnapshot snapshot) : IClaudeUsageSource
     {
+        internal UsageSnapshot Next { get; set; } = snapshot;
         public int CallCount { get; private set; }
 
         public Task<ClaudeUsageObservation> RefreshAsync(CancellationToken cancellationToken)
@@ -434,7 +467,7 @@ public sealed class ClaudeUsageRuntimeTests
             CallCount++;
             return Task.FromResult(new ClaudeUsageObservation(
                 ClaudeUsageSourceKind.CliScreen,
-                snapshot));
+                Next));
         }
     }
 

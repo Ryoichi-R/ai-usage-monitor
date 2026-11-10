@@ -40,7 +40,10 @@ public sealed class ClaudeUsageObservationMerger
 
     public UsageSnapshot Current(DateTimeOffset now) => Current(now, StaleAfter);
 
-    public UsageSnapshot Current(DateTimeOffset now, TimeSpan staleAfter)
+    public UsageSnapshot Current(DateTimeOffset now, TimeSpan staleAfter) =>
+        Current(now, staleAfter, cliScreen: false);
+
+    internal UsageSnapshot Current(DateTimeOffset now, TimeSpan staleAfter, bool cliScreen)
     {
         lock (_sync)
         {
@@ -49,25 +52,39 @@ public sealed class ClaudeUsageObservationMerger
             bool old = now - _current.ReceivedAt > staleAfter;
             if (!expired && !old) return _current;
 
-            // reset通過は既知の待機状態としてRESET_PASSEDに固定する。TTL超過側は、
-            // stale化前の理由が実行可能な終端状態（SignedOut等）ならRECEIVE_TIMEOUTへ
-            // 丸めず引き継ぐ。それ以外（RPCタイムアウト等の一時的失敗）は従来どおり。
-            string reason = expired
+            string? currentReason = _current.Reason;
+            bool preserveReason = currentReason is not null &&
+                (ActionableStaleReasons.Contains(currentReason) ||
+                    (cliScreen && ClaudeUsageFailure.RetainOnRetry(currentReason)));
+            string reason = expired && !cliScreen
                 ? "RESET_PASSED"
-                : _current.Reason is { } currentReason && ActionableStaleReasons.Contains(currentReason)
-                    ? currentReason
-                    : "RECEIVE_TIMEOUT";
+                : preserveReason ? currentReason!
+                : old ? "RECEIVE_TIMEOUT"
+                : "RESET_PASSED";
             return _current with { Availability = UsageAvailability.Stale, Reason = reason, IsStale = true };
         }
     }
 
-    public UsageSnapshot Merge(UsageSnapshot incoming)
+    /// <summary>
+    /// 観測を統合する。失敗・却下時の戻り値は<see cref="Current(DateTimeOffset)"/>と同じ汎用規則
+    /// （<see cref="StaleAfter"/>、CLI用の理由保持なし）で評価される。CLI画面の能動取得では
+    /// 戻り値を表示に使わず、<see cref="ClaudeUsageStateStore"/>経由でCLI用の規則により読み直す。
+    /// </summary>
+    public UsageSnapshot Merge(UsageSnapshot incoming) => Merge(incoming, out _, out _);
+
+    internal UsageSnapshot Merge(UsageSnapshot incoming, out string? rejectionReason, out bool ignored)
     {
+        rejectionReason = null;
+        ignored = false;
         if (incoming.Provider != UsageProvider.Claude) throw new ArgumentException("Claude snapshot required.", nameof(incoming));
         lock (_sync)
         {
             // 遅れて到着した古い観測は、availabilityにかかわらず新しい観測を上書きしない。
-            if (_current is not null && incoming.TakenAt < _current.TakenAt) return _current;
+            if (_current is not null && incoming.TakenAt < _current.TakenAt)
+            {
+                ignored = true;
+                return _current;
+            }
 
             if (incoming.Availability != UsageAvailability.Available)
             {
@@ -139,7 +156,6 @@ public sealed class ClaudeUsageObservationMerger
             Dictionary<int, UsageWindowSnapshot> previous = (_current?.Windows ?? [])
                 .ToDictionary(window => window.WindowDurationMins ?? 0);
             var merged = new Dictionary<int, UsageWindowSnapshot>();
-            string? rejectionReason = null;
             foreach (UsageWindowSnapshot incomingWindow in incoming.Windows)
             {
                 int key = incomingWindow.WindowDurationMins ?? 0;

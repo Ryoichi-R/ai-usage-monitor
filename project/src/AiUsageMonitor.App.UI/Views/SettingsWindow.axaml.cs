@@ -337,21 +337,21 @@ public partial class SettingsWindow : Window
 
     internal void RefreshClaudeStatus()
     {
+        ClaudeRuntimeHealth? currentHealth = _claudeHealthProvider?.Invoke();
         string text = _claudeStatusProvider is null
             ? "接続状態は、アプリを起動しているときに確認できます。"
-            : UsageStatusFormatter.FormatClaudeConnection(_claudeStatusProvider());
+            : UsageStatusFormatter.FormatClaudeConnection(_claudeStatusProvider(), currentHealth?.UsesCliSnapshot == true);
         string? source = _claudeSourceProvider?.Invoke();
         if (!string.IsNullOrWhiteSpace(source))
             text += Environment.NewLine + "現在表示元: " + source;
-        if (_claudeHealthProvider is { } healthProvider)
+        if (currentHealth is { } health)
         {
-            ClaudeRuntimeHealth health = healthProvider();
             text += Environment.NewLine + "active最終試行: " + FormatChannelTime(health.ActiveLastAttemptAt);
             if (!string.IsNullOrWhiteSpace(health.ActiveFailureReason))
                 text += $"（失敗: {health.ActiveFailureReason}）";
             text += Environment.NewLine + "statusLine最終受信: " + FormatChannelTime(health.PassiveLastReceivedAt);
         }
-        if (_claudeHealthProvider?.Invoke().NextAttemptAt is { } next)
+        if (currentHealth?.NextAttemptAt is { } next)
             text += $"\n次回のCLI取得試行: {next.ToLocalTime():MM/dd HH:mm:ss}";
         ClaudeConnectionStatusText.Text = text;
     }

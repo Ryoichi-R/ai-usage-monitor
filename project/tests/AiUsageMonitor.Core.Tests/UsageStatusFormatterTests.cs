@@ -6,6 +6,26 @@ namespace AiUsageMonitor.Core.Tests;
 public sealed class UsageStatusFormatterTests
 {
     [Theory]
+    [InlineData(ClaudeUsageFailure.SectionAmbiguous, "Claude の利用枠を読み取れません")]
+    [InlineData("USAGE_RESET_REGRESSION_REJECTED", "Claude の利用枠を読み取れません")]
+    [InlineData("CLI_CONFIRMATION_TIMEOUT", "利用情報を取得できません")]
+    [InlineData("CONSOLE_BUFFER_READ_FAILED", "取得経路エラー")]
+    [InlineData("CLAUDE_SIGNED_OUT", "Claude Codeへサインインしてください")]
+    [InlineData("CLAUDE_NOT_INSTALLED", "Claude Codeが見つかりません")]
+    [InlineData("CLAUDE_TRUST_REQUIRED", "連携設定のフォルダー信頼が必要です")]
+    [InlineData("MANAGED_SETTINGS_PRESENT", "能動取得を停止 — 管理設定があります")]
+    [InlineData("ACTIVE_SOURCE_NOT_CLI_SCREEN", "利用情報を取得できません")]
+    [InlineData(null, "利用情報を取得できません")]
+    public void FormatsClaudeCliFailureWithoutReasonCode(string? reason, string expected)
+    {
+        string message = UsageStatusFormatter.FormatClaudeCliFailure(reason);
+
+        Assert.Equal(expected, message);
+        if (reason is not null)
+            Assert.DoesNotContain(reason, message, StringComparison.Ordinal);
+    }
+
+    [Theory]
     [InlineData("CODEX_HOME_UNAVAILABLE", "Codexホームを利用できません")]
     [InlineData("CODEX_HOME_DUPLICATE", "同じCodexホームが別の設定で使われています")]
     [InlineData("DUPLICATE_ACCOUNT", "同じアカウントが別のCodexホームで使われています")]

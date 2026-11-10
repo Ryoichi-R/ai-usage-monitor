@@ -17,6 +17,8 @@ public static partial class ClaudeCliUsageScreenParser
         Parse(lines, observedAt, version, TimeZoneInfo.Local);
 
     private static readonly string[] SessionAnchors = ["Current session", "現在のセッション"];
+    private static readonly string[] WeekTerminators =
+        ["What's contributing", "利用上限への影響", "Usage credits", "使用クレジット", "使用量クレジット", "Esc to cancel"];
 
     public static UsageSnapshot Parse(
         IReadOnlyList<string> lines,
@@ -36,28 +38,28 @@ public static partial class ClaudeCliUsageScreenParser
 
         SectionResult session = ParseSection(
             candidate,
-            SessionAnchors,
-            ["Current week (all models)", "今週（すべてのモデル）"],
+            IsSessionHeading,
+            static line => ClassifyWeeklyHeading(line) != WeeklyHeading.None,
             observedAt,
             UsageWindowPolicy.FiveHourDurationMinutes,
             localTimeZone);
         SectionResult week = ParseSection(
             candidate,
-            ["Current week (all models)", "今週（すべてのモデル）"],
-            ["What's contributing", "利用上限への影響", "Usage credits", "使用クレジット", "使用量クレジット", "Esc to cancel"],
+            static line => ClassifyWeeklyHeading(line) == WeeklyHeading.AllModels,
+            IsWeekSectionEnd,
             observedAt,
             UsageWindowPolicy.SevenDayDurationMinutes,
             localTimeZone);
 
         if (!session.Success || !week.Success)
         {
-            UsageResetDiagnostic? diagnostic = session.ResetFailureReason is not null
+            UsageResetDiagnostic? diagnostic = session.FailureReason is not null
                 ? session.ResetDiagnostic
                 : week.ResetDiagnostic;
             return Failure(
                 observedAt,
                 version,
-                session.ResetFailureReason ?? week.ResetFailureReason ?? "USAGE_SCREEN_PARSE_FAILED",
+                session.FailureReason ?? week.FailureReason ?? ClaudeUsageFailure.ScreenParseFailed,
                 diagnostic);
         }
 
@@ -80,19 +82,18 @@ public static partial class ClaudeCliUsageScreenParser
 
     private static SectionResult ParseSection(
         IReadOnlyList<string> lines,
-        string[] anchors,
-        string[] terminators,
+        Func<string, bool> isHeading,
+        Func<string, bool> isEnd,
         DateTimeOffset observedAt,
         int expectedDurationMinutes,
         TimeZoneInfo localTimeZone)
     {
-        int start = FindUniqueAnchor(lines, anchors);
+        int start = FindUniqueHeading(lines, isHeading);
         if (start < 0) return default;
         int end = lines.Count;
         for (int index = start + 1; index < lines.Count; index++)
         {
-            if (terminators.Any(anchor =>
-                    lines[index].Contains(anchor, StringComparison.OrdinalIgnoreCase)))
+            if (isEnd(lines[index]))
             {
                 end = index;
                 break;
@@ -156,22 +157,23 @@ public static partial class ClaudeCliUsageScreenParser
             end < lines.Count &&
             percentages.Count == 1 && percentages[0] == 0 &&
             resetCount == 0 && resetFailureReason is null && contentLineCount == 1;
-        return percentages.Count == 1 && (resetCount == 1 || zeroSessionWithoutReset)
+        if (percentages.Count > 1)
+            return new(false, 0, null, ClaudeUsageFailure.SectionAmbiguous, null);
+        return percentages.Count == 1 && resetFailureReason is null && (resetCount == 1 || zeroSessionWithoutReset)
             ? new(true, percentages[0], reset, null, null)
             : new(false, 0, null, resetFailureReason, resetDiagnostic);
     }
 
     /// <summary>
     /// bufferの末尾から最後のCurrent session（各言語版）を探し、そこから末尾までのsuffixを返す。
-    /// 見つからない場合は入力をそのまま返し、後続のFindUniqueAnchorで従来どおり失敗させる。
+    /// 見つからない場合は入力をそのまま返し、後続のFindUniqueHeadingで従来どおり失敗させる。
     /// </summary>
     private static IReadOnlyList<string> ExtractLatestCandidate(IReadOnlyList<string> lines)
     {
         int lastSessionIndex = -1;
         for (int index = 0; index < lines.Count; index++)
         {
-            if (SessionAnchors.Any(anchor =>
-                    lines[index].Contains(anchor, StringComparison.OrdinalIgnoreCase)))
+            if (IsSessionHeading(lines[index]))
                 lastSessionIndex = index;
         }
         if (lastSessionIndex < 0) return lines;
@@ -183,13 +185,32 @@ public static partial class ClaudeCliUsageScreenParser
         return candidate;
     }
 
-    private static int FindUniqueAnchor(IReadOnlyList<string> lines, string[] anchors)
+    // 5時間枠の見出しは従来どおり部分一致（大文字小文字を区別しない）で判定する。
+    // 週間枠だけはモデル別見出しとの取り違えを防ぐためWeeklyHeadingRegexで厳格に分類する。
+    private static bool IsSessionHeading(string line) =>
+        SessionAnchors.Any(anchor => line.Contains(anchor, StringComparison.OrdinalIgnoreCase));
+
+    private static WeeklyHeading ClassifyWeeklyHeading(string line)
+    {
+        Match heading = WeeklyHeadingRegex().Match(line.Trim());
+        if (!heading.Success) return WeeklyHeading.None;
+        string name = heading.Groups["name"].Value.Trim();
+        if (name.Length == 0) return WeeklyHeading.None;
+        return name.Equals("all models", StringComparison.OrdinalIgnoreCase) || name == "すべてのモデル"
+            ? WeeklyHeading.AllModels
+            : WeeklyHeading.Model;
+    }
+
+    private static bool IsWeekSectionEnd(string line) =>
+        ClassifyWeeklyHeading(line) == WeeklyHeading.Model ||
+        WeekTerminators.Any(anchor => line.Contains(anchor, StringComparison.OrdinalIgnoreCase));
+
+    private static int FindUniqueHeading(IReadOnlyList<string> lines, Func<string, bool> isHeading)
     {
         int found = -1;
         for (int index = 0; index < lines.Count; index++)
         {
-            if (!anchors.Any(anchor =>
-                    lines[index].Contains(anchor, StringComparison.OrdinalIgnoreCase)))
+            if (!isHeading(lines[index]))
                 continue;
             if (found >= 0) return -1;
             found = index;
@@ -514,7 +535,7 @@ public static partial class ClaudeCliUsageScreenParser
     private static UsageSnapshot Failure(
         DateTimeOffset now,
         string? version,
-        string reason = "USAGE_SCREEN_PARSE_FAILED",
+        string reason = ClaudeUsageFailure.ScreenParseFailed,
         UsageResetDiagnostic? diagnostic = null) =>
         new(
             UsageProvider.Claude,
@@ -530,11 +551,18 @@ public static partial class ClaudeCliUsageScreenParser
             version,
             ResetDiagnostic: diagnostic);
 
+    private enum WeeklyHeading { None, AllModels, Model }
+
+    [GeneratedRegex(
+        @"^(?:Current week \((?<name>[^()]+)\)|今週（(?<name>[^（）]+)）)$",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex WeeklyHeadingRegex();
+
     private readonly record struct SectionResult(
         bool Success,
         double UsedPercent,
         DateTimeOffset? ResetsAt,
-        string? ResetFailureReason,
+        string? FailureReason,
         UsageResetDiagnostic? ResetDiagnostic);
 
     private readonly record struct ResetParseResult(

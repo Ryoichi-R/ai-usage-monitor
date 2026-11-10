@@ -69,6 +69,7 @@ public partial class App : System.Windows.Application
         _startPassiveListener = startPassiveListener;
         _mutexName = !string.IsNullOrWhiteSpace(mutexName) ? mutexName : throw new ArgumentException("Mutex name is required.", nameof(mutexName));
         _activationEventName = !string.IsNullOrWhiteSpace(activationEventName) ? activationEventName : throw new ArgumentException("Activation event name is required.", nameof(activationEventName));
+        var diagnostics = new WindowsDiagnosticLog(Path.Combine(Path.GetDirectoryName(_appPaths.SettingsFilePath)!, "diagnostics.log"));
         _claudeRuntime = new(claudeSourceFactory ?? (configuration =>
             new ClaudeCliActiveSource(
                 configuration.ExecutablePath,
@@ -76,7 +77,7 @@ public partial class App : System.Windows.Application
                 configuration.StartupTimeout,
                 new ClaudeWorkspaceProvisioner(_appPaths),
                 new WindowsClaudeScreenSessionFactory(),
-                new ClaudeExecutableLocator())));
+                new ClaudeExecutableLocator())), code => diagnostics.Write(code, null));
     }
 
     protected override async void OnStartup(StartupEventArgs e)

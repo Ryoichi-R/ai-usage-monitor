@@ -18,4 +18,8 @@ public sealed record ClaudeUsageSelection(
     ClaudeUsageFreshnessKind FreshnessKind,
     DateTimeOffset? ActiveLastAttemptAt,
     string? ActiveFailureReason,
-    DateTimeOffset? PassiveLastReceivedAt);
+    DateTimeOffset? PassiveLastReceivedAt)
+{
+    public bool UsesCliSnapshot { get; init; }
+    public DateTimeOffset? CliObservationExpiresAt { get; init; }
+}

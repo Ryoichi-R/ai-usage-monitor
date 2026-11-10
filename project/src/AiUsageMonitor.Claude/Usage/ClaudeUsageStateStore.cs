@@ -33,33 +33,50 @@ public sealed class ClaudeUsageStateStore
         }
     }
 
-    public UsageSnapshot CommitActive(ClaudeUsageObservation observation, DateTimeOffset attemptedAt)
+    public UsageSnapshot CommitActive(
+        ClaudeUsageObservation observation,
+        DateTimeOffset attemptedAt,
+        ClaudeUsageFreshnessPolicy policy) =>
+        CommitActive(observation, attemptedAt, policy, out _);
+
+    /// <summary>
+    /// 能動取得の結果を記録し、<see cref="Read"/>を<paramref name="observation"/>の受信時刻で
+    /// 呼んだ場合と同じactive側snapshot（CLI用のstale判定とActiveTtl）を返す。
+    /// </summary>
+    public UsageSnapshot CommitActive(
+        ClaudeUsageObservation observation,
+        DateTimeOffset attemptedAt,
+        ClaudeUsageFreshnessPolicy policy,
+        out string? diagnosticCode)
     {
         ArgumentNullException.ThrowIfNull(observation);
+        ArgumentNullException.ThrowIfNull(policy);
         lock (_sync)
         {
-            _activeAttempt = attemptedAt;
-            if (observation.Availability == UsageAvailability.Available &&
-                observation.Source == ClaudeUsageSourceKind.CliScreen)
-            {
-                _activeFailure = null;
-                _activeFailureReason = null;
-                return _active.Merge(observation.Snapshot);
-            }
-
-            _activeFailure = observation.ReceivedAt;
-            _activeFailureReason = observation.Source == ClaudeUsageSourceKind.CliScreen
-                ? observation.Reason ?? observation.Availability.ToString().ToUpperInvariant()
+            bool isCli = observation.Source == ClaudeUsageSourceKind.CliScreen;
+            bool available = observation.Availability == UsageAvailability.Available;
+            string? failureReason = isCli && available ? null
+                : isCli ? observation.Reason ?? observation.Availability.ToString().ToUpperInvariant()
                 : "ACTIVE_SOURCE_NOT_CLI_SCREEN";
-            UsageSnapshot failure = observation.Snapshot with
+            UsageSnapshot incoming = failureReason is null
+                ? observation.Snapshot
+                : observation.Snapshot with
+                {
+                    Availability = available ? UsageAvailability.Error : observation.Availability,
+                    Reason = failureReason,
+                    Windows = available ? [] : observation.Snapshot.Windows,
+                };
+            // Merger.Mergeの戻り値は汎用（CLI用でない）stale判定なので使わず、表示と同じ規則で読み直す。
+            _active.Merge(incoming, out string? rejectionReason, out bool ignored);
+            diagnosticCode = null;
+            if (!ignored)
             {
-                Availability = observation.Availability == UsageAvailability.Available
-                    ? UsageAvailability.Error
-                    : observation.Availability,
-                Reason = _activeFailureReason,
-                Windows = observation.Availability == UsageAvailability.Available ? [] : observation.Snapshot.Windows,
-            };
-            return _active.Merge(failure);
+                _activeAttempt = attemptedAt;
+                _activeFailureReason = rejectionReason ?? failureReason;
+                _activeFailure = _activeFailureReason is null ? null : observation.ReceivedAt;
+                diagnosticCode = _activeFailureReason ?? "AVAILABLE";
+            }
+            return _active.Current(observation.ReceivedAt, policy.ActiveTtl, cliScreen: true);
         }
     }
 
@@ -74,7 +91,7 @@ public sealed class ClaudeUsageStateStore
     {
         lock (_sync)
         {
-            UsageSnapshot active = _active.Current(now, policy.ActiveTtl);
+            UsageSnapshot active = _active.Current(now, policy.ActiveTtl, cliScreen: true);
             UsageSnapshot passive = _passive.Current(now, ClaudeUsageFreshnessPolicy.PassiveTtl);
             return (
                 new(active, _activeAttempt, active.LastSuccessfulAt, _activeFailure, _activeFailureReason),

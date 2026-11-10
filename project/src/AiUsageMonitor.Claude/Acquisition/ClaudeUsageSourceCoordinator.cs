@@ -77,8 +77,11 @@ public sealed class ClaudeUsageSourceCoordinator : IAsyncDisposable
         Guid invocationId = Guid.NewGuid();
         try
         {
-            ClaudeUsageObservation observation =
-                await _activeSource.RefreshAsync(CancellationToken.None).ConfigureAwait(false);
+            ClaudeUsageObservation? observation = ScheduledSource is { } scheduled
+                ? await scheduled.RefreshScheduledAsync(CancellationToken.None).ConfigureAwait(false)
+                : await _activeSource.RefreshAsync(CancellationToken.None).ConfigureAwait(false);
+            if (observation is null)
+                return ClaudeActiveRefreshOutcome.Skipped(requestedAt, "ACTIVE_BACKOFF");
             lock (_sync)
             {
                 _nextAutomaticAttemptAt = observation.Availability == UsageAvailability.Available

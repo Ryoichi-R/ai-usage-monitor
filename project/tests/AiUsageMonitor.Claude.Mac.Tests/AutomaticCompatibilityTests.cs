@@ -2,6 +2,8 @@ using System.Runtime.Versioning;
 using AiUsageMonitor.Claude.Acquisition;
 using AiUsageMonitor.Claude.Cli;
 using AiUsageMonitor.Claude.Mac;
+using AiUsageMonitor.Core.Presentation;
+using AiUsageMonitor.Core.Settings;
 using AiUsageMonitor.Core.Usage;
 
 namespace AiUsageMonitor.Claude.Mac.Tests;
@@ -216,6 +218,78 @@ public sealed class AutomaticCompatibilityTests
         Assert.Equal(time.GetUtcNow().AddMinutes(1), source.NextAttemptAt);
     }
 
+    [Theory]
+    [InlineData(ClaudeUsageFailure.ScreenParseFailed, ClaudeUsageFailure.ScreenParseFailed)]
+    [InlineData("PROCESS_EXITED", "CLI_CONFIRMATION_RETRYING")]
+    public async Task ReportsRealFailureAndSkipsDeferredAcquisition(string reason, string expected)
+    {
+        using var fixture = new Fixture();
+        var time = new Clock();
+        int acquisitions = 0;
+        using var source = new MacClaudeAutomaticSource(null, fixture.Locator, fixture.Store, "test", TimeSpan.FromSeconds(5),
+            (_, _, _) => new Source(_ =>
+            {
+                acquisitions++;
+                return Task.FromResult(new ClaudeUsageObservation(ClaudeUsageSourceKind.CliScreen,
+                    UsageSnapshot.Loading(UsageProvider.Claude, time.Now) with
+                    {
+                        Availability = UsageAvailability.Error,
+                        Reason = reason,
+                    }));
+            }), time);
+        var coordinator = new ClaudeUsageSourceCoordinator(source);
+
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            ClaudeActiveRefreshOutcome outcome = await coordinator.RefreshAsync(
+                ClaudeUsageAcquisitionMode.Automatic, false, time.Now, default);
+            Assert.True(outcome.WasInvoked);
+            Assert.Equal(attempt < 2 ? reason : expected, outcome.Observation?.Reason);
+
+            ClaudeActiveRefreshOutcome deferred = await coordinator.RefreshAsync(
+                ClaudeUsageAcquisitionMode.Automatic, false, time.Now, default);
+            Assert.False(deferred.WasInvoked);
+            Assert.Equal("ACTIVE_BACKOFF", deferred.SkipReason);
+            Assert.Null(deferred.Observation);
+            if (attempt < 2) time.Now = source.NextAttemptAt!.Value;
+        }
+        Assert.Equal(3, acquisitions);
+
+        fixture.Locator.FailureReason = "SIGNATURE_VERIFICATION_FAILED";
+        ClaudeActiveRefreshOutcome invalid = await coordinator.RefreshAsync(
+            ClaudeUsageAcquisitionMode.Automatic, false, time.Now, default);
+        Assert.True(invalid.WasInvoked);
+        Assert.Equal("SIGNATURE_VERIFICATION_FAILED", invalid.Observation?.Reason);
+        Assert.Equal(3, acquisitions);
+    }
+
+    [Fact]
+    public async Task SignedOutAfterRepeatedFailuresShowsSignInAndClearsBackoff()
+    {
+        using var fixture = new Fixture();
+        var time = new Clock();
+        ClaudeUsageObservation observation = Failed();
+        using var source = new MacClaudeAutomaticSource(null, fixture.Locator, fixture.Store, "test", TimeSpan.FromSeconds(5),
+            (_, _, _) => new Source(_ => Task.FromResult(observation)), time);
+
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            await source.RefreshAsync(default);
+            time.Now = source.NextAttemptAt!.Value;
+        }
+
+        observation = new(observation.Source, observation.Snapshot with
+        {
+            Availability = UsageAvailability.SignedOut,
+            Reason = "CLAUDE_SIGNED_OUT",
+        });
+        ClaudeUsageObservation result = await source.RefreshAsync(default);
+
+        Assert.Equal("Claude Codeへサインインしてください", UsageStatusFormatter.Format("CLAUDE", result.Snapshot));
+        Assert.Equal("CLAUDE_SIGNED_OUT", result.Reason);
+        Assert.Null(source.NextAttemptAt);
+    }
+
     [Fact]
     public async Task ProvenMigrationBlocksCopiesOfSameIdentityButAllowsDifferentOfficialCandidate()
     {
@@ -281,7 +355,8 @@ public sealed class AutomaticCompatibilityTests
     {
         internal string Identity { get; set; } = IdentityA;
         internal int Calls { get; private set; }
-        public ClaudeExecutableInfo Resolve(string? path) { Calls++; return new("/synthetic/claude", null, true, "Anthropic", null) { Identity = Identity }; }
+        internal string? FailureReason { get; set; }
+        public ClaudeExecutableInfo Resolve(string? path) { Calls++; return new("/synthetic/claude", null, FailureReason is null, "Anthropic", FailureReason) { Identity = Identity }; }
     }
     private sealed class Source(Func<CancellationToken, Task<ClaudeUsageObservation>> run) : IClaudeUsageSource
     { public Task<ClaudeUsageObservation> RefreshAsync(CancellationToken token) => run(token); }

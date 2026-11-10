@@ -58,6 +58,47 @@ public sealed class ClaudeCliUsageScreenParserTests
     }
 
     [Theory]
+    [InlineData("Current week (Fable)", "Current week (all models)", false)]
+    [InlineData("current week (Other)", "CURRENT WEEK (ALL MODELS)", true)]
+    [InlineData("今週（Fable）", "今週（すべてのモデル）", false)]
+    [InlineData("今週（Fable）", "今週（すべてのモデル）", true)]
+    public void SeparatesModelSpecificWeeklySections(string modelHeading, string allModelsHeading, bool modelFirst)
+    {
+        string[] allModels = [allModelsHeading, "32% used", "Resets Jul 30, 1pm (Asia/Tokyo)"];
+        string[] model = [modelHeading, "99% used", "Resets Jul 29, 1pm (Asia/Tokyo)"];
+        string[] lines =
+        [
+            "Current session", "48% used", "Resets 2pm (Asia/Tokyo)",
+            ..(modelFirst ? model : allModels),
+            ..(modelFirst ? allModels : model),
+            "Current week (Another)", "81% used", "Resets Jul 28, 1pm (Asia/Tokyo)",
+            "Usage credits",
+        ];
+
+        UsageSnapshot result = ClaudeCliUsageScreenParser.Parse(lines, ObservedAt, "test");
+
+        Assert.Equal(UsageAvailability.Available, result.Availability);
+        Assert.Equal([48d, 32d], result.Windows.Select(window => window.UsedPercent));
+    }
+
+    [Theory]
+    [InlineData("Current week (Fable")]
+    [InlineData("Notes about Current week (Fable)")]
+    [InlineData("Current week (Fable) footnote")]
+    public void IncompleteOrIncidentalHeadingDoesNotHideAmbiguity(string nonHeading)
+    {
+        string[] lines =
+        [
+            "Current session", "48% used", "Resets 2pm (Asia/Tokyo)",
+            "Current week (all models)", "32% used", "Resets Jul 30, 1pm (Asia/Tokyo)",
+            nonHeading, "99% used", "Resets Jul 29, 1pm (Asia/Tokyo)",
+        ];
+        UsageSnapshot result = ClaudeCliUsageScreenParser.Parse(lines, ObservedAt, "test");
+        Assert.Equal(ClaudeUsageFailure.SectionAmbiguous, result.Reason);
+        Assert.Empty(result.Windows);
+    }
+
+    [Theory]
     [InlineData("101% used")]
     [InlineData("50% higher")]
     [InlineData("47% 48% used")]
@@ -78,7 +119,9 @@ public sealed class ClaudeCliUsageScreenParserTests
         UsageSnapshot result = ClaudeCliUsageScreenParser.Parse(lines, ObservedAt, "2.1.218");
 
         Assert.Equal(UsageAvailability.Error, result.Availability);
-        Assert.Equal("USAGE_SCREEN_PARSE_FAILED", result.Reason);
+        Assert.Equal(sessionPercentages.Length > 1
+            ? ClaudeUsageFailure.SectionAmbiguous
+            : ClaudeUsageFailure.ScreenParseFailed, result.Reason);
         Assert.Empty(result.Windows);
     }
 
@@ -110,6 +153,60 @@ public sealed class ClaudeCliUsageScreenParserTests
         Assert.Equal(reason, result.Reason);
         Assert.Empty(result.Windows);
     }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    [InlineData(false, true)]
+    public void UnreadableResetLineFailsSectionEvenWhenAnotherResetLineIsValid(
+        bool validFirst,
+        bool weekly)
+    {
+        // 有効なreset行が1行あっても、同じ枠にreset行として読めない行が残れば失敗させる。
+        string[] resets = validFirst
+            ? [weekly ? "Resets Jul 30, 1pm (Asia/Tokyo)" : "Resets 2pm (Asia/Tokyo)", "Resets in 45m"]
+            : ["Resets in 45m", weekly ? "Resets Jul 30, 1pm (Asia/Tokyo)" : "Resets 2pm (Asia/Tokyo)"];
+        string[] session = weekly ? ["Resets 2pm (Asia/Tokyo)"] : resets;
+        string[] week = weekly ? resets : ["Resets Jul 30, 1pm (Asia/Tokyo)"];
+        string[] lines =
+        [
+            "Current session", "48% used", ..session,
+            "Current week (all models)", "32% used", ..week,
+            "Usage credits",
+        ];
+
+        UsageSnapshot result = ClaudeCliUsageScreenParser.Parse(lines, ObservedAt, "test");
+
+        Assert.Equal(UsageAvailability.Error, result.Availability);
+        Assert.Equal("USAGE_RESET_FORMAT_UNSUPPORTED", result.Reason);
+        Assert.Equal("english_relative", result.ResetDiagnostic?.Category);
+        Assert.Empty(result.Windows);
+    }
+
+    [Theory]
+    [InlineData("› Current session")]
+    [InlineData("CURRENT SESSION · 5-hour limit")]
+    [InlineData("Current session (resets soon)")]
+    [InlineData("› 現在のセッション")]
+    public void SessionHeadingKeepsCaseInsensitiveSubstringMatch(string heading)
+    {
+        string[] lines =
+        [
+            "Current session", "10% used", "Resets 1:30pm (Asia/Tokyo)",
+            "Current week (all models)", "5% used", "Resets Jul 29, 1pm (Asia/Tokyo)",
+            heading, "48% used", "Resets 2pm (Asia/Tokyo)",
+            "Current week (all models)", "32% used", "Resets Jul 30, 1pm (Asia/Tokyo)",
+            "Usage credits",
+        ];
+
+        UsageSnapshot result = ClaudeCliUsageScreenParser.Parse(lines, ObservedAt, "test");
+
+        // 部分一致の見出しも最新frameの起点として扱い、古いframeの値を混ぜない。
+        Assert.Equal(UsageAvailability.Available, result.Availability);
+        Assert.Equal([48d, 32d], result.Windows.Select(window => window.UsedPercent));
+    }
+
     [Fact]
     public void ParsesJapaneseMinutesOnlyReset()
     {

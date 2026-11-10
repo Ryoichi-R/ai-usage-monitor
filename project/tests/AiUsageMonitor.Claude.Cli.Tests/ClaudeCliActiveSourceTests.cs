@@ -52,6 +52,27 @@ public sealed class ClaudeCliActiveSourceTests
     }
 
     [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task RereadsAmbiguousSectionUntilSuccessOrDeadline(bool completes)
+    {
+        string[] usage = UsageScreen();
+        string[] ambiguous = [.. usage.Take(5), "99% used", .. usage.Skip(5)];
+        ScreenSnapshot[] screens = completes
+            ? [ScreenOf(ReadyScreen), ScreenOf(ambiguous), ScreenOf(usage)]
+            : [ScreenOf(ReadyScreen), ScreenOf(ambiguous)];
+        var session = new FakeClaudeScreenSession(screens);
+        ClaudeCliActiveSource source = CreateSource(session: session,
+            startupTimeout: TimeSpan.FromSeconds(completes ? 2 : 0.5));
+
+        ClaudeUsageObservation result = await source.RefreshAsync(CancellationToken.None);
+
+        Assert.Equal(completes ? UsageAvailability.Available : UsageAvailability.Error, result.Availability);
+        Assert.Equal(completes ? null : ClaudeUsageFailure.SectionAmbiguous, result.Reason);
+        Assert.Single(session.Calls, call => call.Command == "usage");
+    }
+
+    [Theory]
     [InlineData(ClaudeScreenFailureCode.DescendantEscaped, UsageAvailability.Unsupported, "CLI_GROUP_ESCAPE_DETECTED")]
     [InlineData(ClaudeScreenFailureCode.ProcessCleanupFailed, UsageAvailability.Error, "PROCESS_CLEANUP_FAILED")]
     public async Task RefreshAsyncDiscardsParsedUsageWhenCleanupReportsFailure(
@@ -100,7 +121,7 @@ public sealed class ClaudeCliActiveSourceTests
         Assert.Equal(UsageAvailability.Setup, observation.Availability);
         Assert.Equal("CLAUDE_TRUST_REQUIRED", observation.Reason);
         var store = new ClaudeUsageStateStore();
-        Assert.Equal(observation.Reason, store.CommitActive(observation, DateTimeOffset.UtcNow).Reason);
+        Assert.Equal(observation.Reason, store.CommitActive(observation, DateTimeOffset.UtcNow, new ClaudeUsageFreshnessPolicy(300)).Reason);
     }
 
     [Fact]
@@ -114,7 +135,7 @@ public sealed class ClaudeCliActiveSourceTests
         Assert.Equal(UsageAvailability.SignedOut, observation.Availability);
         Assert.Equal("CLAUDE_SIGNED_OUT", observation.Reason);
         var store = new ClaudeUsageStateStore();
-        Assert.Equal(observation.Reason, store.CommitActive(observation, DateTimeOffset.UtcNow).Reason);
+        Assert.Equal(observation.Reason, store.CommitActive(observation, DateTimeOffset.UtcNow, new ClaudeUsageFreshnessPolicy(300)).Reason);
     }
 
     [Fact]
@@ -188,7 +209,7 @@ public sealed class ClaudeCliActiveSourceTests
 
         ClaudeUsageObservation observation = await source.RefreshAsync(CancellationToken.None);
         var store = new ClaudeUsageStateStore();
-        UsageSnapshot snapshot = store.CommitActive(observation, DateTimeOffset.UtcNow);
+        UsageSnapshot snapshot = store.CommitActive(observation, DateTimeOffset.UtcNow, new ClaudeUsageFreshnessPolicy(300));
 
         Assert.Equal(ClaudeUsageSourceKind.CliScreen, observation.Source);
         Assert.Equal(UsageAvailability.Unsupported, snapshot.Availability);

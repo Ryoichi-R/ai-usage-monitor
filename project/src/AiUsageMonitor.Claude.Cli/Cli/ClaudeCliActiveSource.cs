@@ -248,10 +248,7 @@ public sealed class ClaudeCliActiveSource : IClaudeUsageSource
                         DateTimeOffset.UtcNow,
                         version);
                     if (parsed.Availability == UsageAvailability.Available ||
-                        !string.Equals(
-                            parsed.Reason,
-                            ClaudeScreenFailureCode.UsageScreenParseFailed.ToReasonCode(),
-                            StringComparison.Ordinal))
+                        parsed.Reason is not (ClaudeUsageFailure.ScreenParseFailed or ClaudeUsageFailure.SectionAmbiguous))
                     {
                         return parsed;
                     }

@@ -7,10 +7,10 @@ public static class UsageStatusFormatter
     // 常駐アイコンの置き場所の呼び名。WindowsはタスクバーのNotification Area、macOSはメニューバー。
     private static readonly string StatusIconLocation = OperatingSystem.IsMacOS() ? "メニューバー" : "通知領域";
 
-    public static string Format(string providerName, UsageSnapshot snapshot)
+    public static string Format(string providerName, UsageSnapshot snapshot, bool cliScreen = false)
     {
         if (snapshot.Provider == UsageProvider.Claude)
-            return FormatClaude(snapshot);
+            return (cliScreen ? FormatClaudeCliReason(snapshot.Reason) : null) ?? FormatClaude(snapshot);
         return snapshot.Reason switch
         {
             "CODEX_HOME_UNAVAILABLE" => "Codexホームを利用できません",
@@ -36,9 +36,12 @@ public static class UsageStatusFormatter
         };
     }
 
-    // stale化してもTTL超過理由(RECEIVE_TIMEOUT)へ丸めず引き継がれる、利用者操作で解消できる
-    // 終端理由・既知の待機理由・取得経路異常。ClaudeUsageObservationMergerのActionableStaleReasons
-    // と対応する（RESET_PASSEDとCONSOLE_BUFFER_READ_FAILEDはMerger側で丸めの対象にしていない）。
+    // stale時の理由別文言。CLI画面の値を表示する経路（cliScreen: true）では、先に
+    // FormatClaudeCliReasonがサインアウト・RESET_PASSED・取得経路エラー・読み取り失敗・タイムアウトを
+    // CLI用の文言へ変換するため、ここへ落ちるのはそれ以外の理由（未インストール、フォルダー信頼、
+    // 能動取得の停止理由など）だけである。statusLine経路（cliScreen: false）ではここが全理由を扱う。
+    // その経路のMergerはreset通過をRESET_PASSEDへ、TTL超過をActionableStaleReasons以外は
+    // RECEIVE_TIMEOUTへ丸める。statusLine側の文言（「5時間枠の更新待ち」等）はCLI経路の分離後も変えていない。
     // compact widget表示（DisplayMode = Compact）でも同じ理由別文言をそのまま出す。widgetの
     // 視覚デザイン変更（表示切替の新設）を避けるため、短縮形の出し分けは行わない（owner判断）。
     private static string FormatClaudeStaleReason(string? reason) => reason switch
@@ -79,7 +82,42 @@ public static class UsageStatusFormatter
         _ => null,
     };
 
+    /// <summary>
+    /// statusLine参考値の表示に添える、公式CLI（能動取得）の失敗理由の利用者向け文言。
+    /// 理由コードは画面に出さず、診断ログと接続設定の詳細にだけ残す。
+    /// </summary>
+    public static string FormatClaudeCliFailure(string? reason) =>
+        FormatClaudeCliReason(reason) ??
+        FormatClaudeUnsupportedReason(reason) ??
+        reason switch
+        {
+            "CLAUDE_NOT_INSTALLED" => "Claude Codeが見つかりません",
+            "CLAUDE_TRUST_REQUIRED" => "連携設定のフォルダー信頼が必要です",
+            _ => "利用情報を取得できません",
+        };
+
+    private static string? FormatClaudeCliReason(string? reason) => reason switch
+    {
+        "CLAUDE_SIGNED_OUT" => "Claude Codeへサインインしてください",
+        "RESET_PASSED" => "利用枠の更新待ち — 自動再開します",
+        "CONSOLE_BUFFER_READ_FAILED" => "取得経路エラー",
+        _ when ClaudeUsageFailure.IsReadingFailure(reason) => "Claude の利用枠を読み取れません",
+        _ when ClaudeUsageFailure.IsTimeout(reason) => "利用情報を取得できません",
+        _ => null,
+    };
+
+    private static string? FormatClaudeCliConnection(string? reason) => reason switch
+    {
+        "CLAUDE_SIGNED_OUT" => "Claude Codeへサインインしてください。",
+        "RESET_PASSED" => "利用枠の更新待ちです。自動的に再開します。",
+        "CONSOLE_BUFFER_READ_FAILED" => "Claude利用情報の取得経路でエラーが発生しました。アプリ再起動後も続く場合はtroubleshootingを確認してください。",
+        _ when ClaudeUsageFailure.IsReadingFailure(reason) => "Claude Code の利用枠を更新できません。自動で再試行します。",
+        _ when ClaudeUsageFailure.IsTimeout(reason) => "接続しましたが、利用情報を取得できません。",
+        _ => null,
+    };
+
     private static string FormatClaude(UsageSnapshot snapshot) =>
+        snapshot.Availability == UsageAvailability.SignedOut ? "Claude Codeへサインインしてください" :
         snapshot.Reason == "CLI_COMPATIBILITY_CHECKING" ? "Claude Codeの変更後の互換性を確認しています" :
         snapshot.Reason == "CLI_CONFIRMATION_RETRYING" ? "互換性を確認できない状態が続いています — 自動再試行します" :
         snapshot.IsStale || snapshot.Availability == UsageAvailability.Stale
@@ -98,7 +136,11 @@ public static class UsageStatusFormatter
                 _ => "状態を確認できません",
             };
 
-    public static string FormatClaudeConnection(UsageSnapshot snapshot) =>
+    public static string FormatClaudeConnection(UsageSnapshot snapshot, bool cliScreen = false) =>
+        (cliScreen ? FormatClaudeCliConnection(snapshot.Reason) : null) ??
+        FormatClaudeConnectionCore(snapshot);
+
+    private static string FormatClaudeConnectionCore(UsageSnapshot snapshot) =>
         snapshot.IsStale || snapshot.Availability == UsageAvailability.Stale
             ? snapshot.Reason switch
             {

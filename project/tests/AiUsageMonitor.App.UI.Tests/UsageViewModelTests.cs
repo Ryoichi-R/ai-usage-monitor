@@ -174,6 +174,35 @@ public sealed class UsageViewModelTests
     }
 
     [Fact]
+    public void CliRetentionHidesOnlyResetWindowsUntilObservationExpires()
+    {
+        var usage = new ProviderUsageViewModel("CLAUDE", () => FixedNow, Tokyo);
+        DateTimeOffset successfulAt = FixedNow.AddMinutes(-5);
+        UsageSnapshot stale = Snapshot(UsageProvider.Claude, successfulAt, successfulAt) with
+        {
+            IsStale = true,
+            Availability = UsageAvailability.Stale,
+            Reason = ClaudeUsageFailure.ScreenParseFailed,
+            Windows =
+            [
+                new(null, null, "five_hour", 20, 300, FixedNow, null),
+                new(null, null, "seven_day", 35, 10080, FixedNow.AddDays(1), null),
+            ],
+        };
+        usage.Apply(stale, ClaudeUsageFreshnessKind.Cli, false, stale.Reason,
+            cliScreen: true, cliObservationExpiresAt: FixedNow);
+
+        Assert.Equal("7D", Assert.Single(usage.Rows).Label);
+        Assert.Equal("Claude の利用枠を読み取れません", usage.StatusText);
+        Assert.Equal("CLI最終 14:25", usage.FreshnessText);
+
+        usage.Apply(stale, ClaudeUsageFreshnessKind.Cli, false, stale.Reason,
+            cliScreen: true, cliObservationExpiresAt: FixedNow.AddTicks(-1));
+        Assert.Empty(usage.Rows);
+        Assert.Equal("CLI最終 14:25", usage.FreshnessText);
+    }
+
+    [Fact]
     public void RefreshFailureDoesNotAdvanceDisplayedSuccessfulTime()
     {
         var usage = new ProviderUsageViewModel(
@@ -197,8 +226,12 @@ public sealed class UsageViewModelTests
         Assert.Equal(UsageSeverity.Warning, usage.FreshnessSeverity);
     }
 
-    [Fact]
-    public void ClaudeReferenceShowsReceiptTooltipAndActiveFailureDiagnostic()
+    [Theory]
+    [InlineData(ClaudeUsageFailure.ScreenParseFailed, "Claude の利用枠を読み取れません")]
+    [InlineData("READY_TIMEOUT", "利用情報を取得できません")]
+    [InlineData("CLI_SCREEN_INCOMPATIBLE", "能動取得を停止 — Claude Codeの画面形式が非対応です")]
+    [InlineData("TIMEOUT", "利用情報を取得できません")]
+    public void ClaudeReferenceShowsReceiptTooltipAndActiveFailureMessage(string reason, string message)
     {
         var usage = new ProviderUsageViewModel(
             "CLAUDE",
@@ -213,14 +246,15 @@ public sealed class UsageViewModelTests
             passive,
             ClaudeUsageFreshnessKind.StatusLineReceipt,
             isReference: true,
-            activeFailureReason: "TIMEOUT");
+            activeFailureReason: reason);
 
         Assert.Equal("SL受信 14:28", usage.FreshnessText);
         Assert.Contains("server measurement timestampではありません", usage.FreshnessToolTip);
         Assert.StartsWith("SL受信 14:28\n", usage.FreshnessCompactToolTip, StringComparison.Ordinal);
         Assert.Contains(usage.FreshnessToolTip, usage.FreshnessCompactToolTip, StringComparison.Ordinal);
         Assert.Contains("statusLine参考値 — 最新性未保証", usage.StatusText);
-        Assert.Contains("TIMEOUT", usage.StatusText);
+        Assert.EndsWith($"公式CLI更新失敗: {message}", usage.StatusText, StringComparison.Ordinal);
+        Assert.DoesNotContain(reason, usage.StatusText, StringComparison.Ordinal);
         Assert.Equal(ProviderStatusKind.Actionable, usage.StatusKind);
         Assert.True(usage.IsCompactStatusVisible);
     }
@@ -494,7 +528,8 @@ public sealed class UsageViewModelTests
         viewModel.ApplyClaude(new Runtime.ClaudeRuntimeSnapshot(1, passive, selection));
 
         Assert.Equal("SL受信 14:28", viewModel.Claude.FreshnessText);
-        Assert.Contains("TIMEOUT", viewModel.Claude.StatusText, StringComparison.Ordinal);
+        Assert.EndsWith("公式CLI更新失敗: 利用情報を取得できません", viewModel.Claude.StatusText, StringComparison.Ordinal);
+        Assert.DoesNotContain("TIMEOUT", viewModel.Claude.StatusText, StringComparison.Ordinal);
         Assert.True(viewModel.Claude.IsCompactStatusVisible);
     }
 

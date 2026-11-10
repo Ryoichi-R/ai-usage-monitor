@@ -85,7 +85,9 @@ public sealed class UsageViewModel : INotifyPropertyChanged
             display,
             snapshot.Selection.FreshnessKind,
             snapshot.Selection.IsReference,
-            snapshot.Selection.ActiveFailureReason);
+            snapshot.Selection.ActiveFailureReason,
+            snapshot.Selection.UsesCliSnapshot,
+            snapshot.Selection.CliObservationExpiresAt);
     }
 
     public void Apply(CodexAccountSnapshot accountSnapshot)
@@ -291,14 +293,21 @@ public sealed class ProviderUsageViewModel : INotifyPropertyChanged
         UsageSnapshot snapshot,
         ClaudeUsageFreshnessKind freshnessKind,
         bool isReference,
-        string? activeFailureReason)
+        string? activeFailureReason,
+        bool cliScreen = false,
+        DateTimeOffset? cliObservationExpiresAt = null)
     {
         Rows.Clear();
-        // TTL内のrefresh失敗では前回値を維持し、TTL超過・reset通過（Stale）では割合とバーを消す。
-        // 古い割合を「現在値」として残さないという契約はTTLで担保する。
         bool showRows = !snapshot.IsStale && snapshot.Availability != UsageAvailability.Stale;
-        UsageWindowSnapshot[] visibleWindows =
-            (showRows && ShowRateLimits ? snapshot.Windows : []).ToArray();
+        DateTimeOffset now = _clock();
+        IEnumerable<UsageWindowSnapshot> visibleWindows = [];
+        if (ShowRateLimits)
+        {
+            if (showRows)
+                visibleWindows = snapshot.Windows;
+            else if (cliScreen && cliObservationExpiresAt >= now)
+                visibleWindows = snapshot.Windows.Where(window => window.ResetsAt is null || window.ResetsAt > now);
+        }
         CodexIndividualLimitSnapshot? individual = showRows ? snapshot.IndividualLimit : null;
         AdditionalUsage.IsVisible = ShowAdditionalUsage && individual is not null;
         if (individual is not null)
@@ -323,8 +332,8 @@ public sealed class ProviderUsageViewModel : INotifyPropertyChanged
         (string statusText, ProviderStatusKind statusKind) = isReference
             ? activeFailureReason is null
                 ? ("statusLine参考値 — 最新性未保証", ProviderStatusKind.Actionable)
-                : ($"statusLine参考値 — 最新性未保証 / 公式CLI更新失敗: {activeFailureReason}", ProviderStatusKind.Actionable)
-            : StatusFor(snapshot);
+                : ($"statusLine参考値 — 最新性未保証 / 公式CLI更新失敗: {UsageStatusFormatter.FormatClaudeCliFailure(activeFailureReason)}", ProviderStatusKind.Actionable)
+            : StatusFor(snapshot, cliScreen);
         SetStatus(statusText, statusKind);
         string? freshPrefix = freshnessKind switch
         {
@@ -372,7 +381,7 @@ public sealed class ProviderUsageViewModel : INotifyPropertyChanged
         }
     }
 
-    private (string Text, ProviderStatusKind Kind) StatusFor(UsageSnapshot snapshot)
+    private (string Text, ProviderStatusKind Kind) StatusFor(UsageSnapshot snapshot, bool cliScreen)
     {
         if (string.Equals(snapshot.Reason, "STATUSLINE_WAITING", StringComparison.Ordinal))
             return ("statusLine待機中", ProviderStatusKind.Actionable);
@@ -381,8 +390,9 @@ public sealed class ProviderUsageViewModel : INotifyPropertyChanged
             string minutes = snapshot.Reason["STATUSLINE_NOT_RECEIVED:".Length..];
             return ($"statusLine未受信 {minutes}分 — Claude Code sessionとstatusLine設定を確認", ProviderStatusKind.Actionable);
         }
-        if (snapshot.Availability != UsageAvailability.Available)
-            return (UsageStatusFormatter.Format(Name, snapshot), ProviderStatusKind.Actionable);
+        if (snapshot.Availability != UsageAvailability.Available ||
+            (cliScreen && ClaudeUsageFailure.RetainOnRetry(snapshot.Reason)))
+            return (UsageStatusFormatter.Format(Name, snapshot, cliScreen), ProviderStatusKind.Actionable);
         if (snapshot.Provider == UsageProvider.Claude &&
             !string.IsNullOrWhiteSpace(snapshot.Reason))
             return ("前回値を表示中 — 更新に失敗しました", ProviderStatusKind.Actionable);

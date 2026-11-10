@@ -573,15 +573,15 @@ public partial class SettingsWindow : Window
 
     private void RefreshClaudeStatus()
     {
+        ClaudeRuntimeHealth? currentHealth = _claudeHealthProvider?.Invoke();
         ClaudeConnectionStatusText.Text = _claudeStatusProvider is null
             ? "接続状態は、アプリを起動しているときに確認できます。"
-            : UsageStatusFormatter.FormatClaudeConnection(_claudeStatusProvider());
+            : UsageStatusFormatter.FormatClaudeConnection(_claudeStatusProvider(), currentHealth?.UsesCliSnapshot == true);
         string? source = _claudeSourceProvider?.Invoke();
         if (!string.IsNullOrWhiteSpace(source))
             ClaudeConnectionStatusText.Text += Environment.NewLine + "現在表示元: " + source;
-        if (_claudeHealthProvider is { } healthProvider)
+        if (currentHealth is { } health)
         {
-            ClaudeRuntimeHealth health = healthProvider();
             ClaudeConnectionStatusText.Text += Environment.NewLine +
                 "active最終試行: " + FormatChannelTime(health.ActiveLastAttemptAt);
             if (!string.IsNullOrWhiteSpace(health.ActiveFailureReason))

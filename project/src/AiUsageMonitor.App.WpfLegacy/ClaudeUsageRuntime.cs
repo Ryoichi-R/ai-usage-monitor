@@ -16,13 +16,19 @@ internal sealed class ClaudeUsageRuntime
     private ClaudeUsageAcquisitionMode _mode = ClaudeUsageAcquisitionMode.Automatic;
     private ClaudeUsageFreshnessPolicy _policy = new(300);
     private Guid _lastCommittedInvocationId;
+    private readonly Action<string>? _diagnostic;
+    private string? _lastAcquisitionCode;
+    private string? _lastDisplayStatus;
     private ClaudeUsageSourceKind? _currentSource;
     private DateTimeOffset? _statusLineOnlySince;
     private long _generation;
 
-    public ClaudeUsageRuntime(Func<ClaudeActiveSourceConfiguration, IClaudeUsageSource> sourceFactory)
+    public ClaudeUsageRuntime(
+        Func<ClaudeActiveSourceConfiguration, IClaudeUsageSource> sourceFactory,
+        Action<string>? diagnostic = null)
     {
         _sourceFactory = sourceFactory ?? throw new ArgumentNullException(nameof(sourceFactory));
+        _diagnostic = diagnostic;
     }
 
     public event Action<ClaudeRuntimeSnapshot>? SnapshotChanged;
@@ -67,6 +73,8 @@ internal sealed class ClaudeUsageRuntime
                 _coordinator = CreateCoordinator(source);
                 _configuration = configuration;
                 _lastCommittedInvocationId = Guid.Empty;
+                _lastAcquisitionCode = null;
+                _lastDisplayStatus = null;
                 _state.InvalidateActive();
             }
             return SnapshotLocked(now);
@@ -98,7 +106,10 @@ internal sealed class ClaudeUsageRuntime
                 current.Selection.Source,
                 current.Selection.ActiveLastAttemptAt,
                 current.Selection.ActiveFailureReason,
-                current.Selection.PassiveLastReceivedAt);
+                current.Selection.PassiveLastReceivedAt)
+            {
+                UsesCliSnapshot = current.Selection.UsesCliSnapshot,
+            };
         }
     }
 
@@ -166,9 +177,12 @@ internal sealed class ClaudeUsageRuntime
                 outcome.Observation is { } observation &&
                 outcome.InvocationId != _lastCommittedInvocationId)
             {
-                _state.CommitActive(observation, outcome.RequestedAt);
+                _state.CommitActive(observation, outcome.RequestedAt, _policy, out string? diagnosticCode);
                 _lastCommittedInvocationId = outcome.InvocationId;
-                current = SnapshotLocked(observation.ReceivedAt);
+                ClaudeRuntimeSnapshot committedSnapshot = SnapshotLocked(observation.ReceivedAt);
+                current = committedSnapshot;
+                if (diagnosticCode is not null)
+                    ReportAcquisition(diagnosticCode, committedSnapshot.Snapshot);
             }
             else if (generation == _generation &&
                 ReferenceEquals(coordinator, _coordinator))
@@ -230,6 +244,23 @@ internal sealed class ClaudeUsageRuntime
         }
         _currentSource = selection.Source;
         return new(_generation, selection.Snapshot, selection);
+    }
+
+    private void ReportAcquisition(string code, UsageSnapshot snapshot)
+    {
+        if (_diagnostic is null) return;
+        if (!string.Equals(code, _lastAcquisitionCode, StringComparison.Ordinal))
+        {
+            _lastAcquisitionCode = code;
+            _diagnostic($"claude-acquisition:{code}");
+        }
+
+        string displayStatus = $"claude-status:{snapshot.Availability}:{snapshot.Reason ?? "-"}";
+        if (!string.Equals(displayStatus, _lastDisplayStatus, StringComparison.Ordinal))
+        {
+            _lastDisplayStatus = displayStatus;
+            _diagnostic(displayStatus);
+        }
     }
 
     private void Publish(ClaudeRuntimeSnapshot snapshot)
@@ -304,4 +335,7 @@ public readonly record struct ClaudeRuntimeHealth(
     ClaudeUsageSourceKind? SelectedSource,
     DateTimeOffset? ActiveLastAttemptAt,
     string? ActiveFailureReason,
-    DateTimeOffset? PassiveLastReceivedAt);
+    DateTimeOffset? PassiveLastReceivedAt)
+{
+    public bool UsesCliSnapshot { get; init; }
+}

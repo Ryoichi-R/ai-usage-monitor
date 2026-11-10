@@ -80,6 +80,13 @@ public sealed class MacClaudeAutomaticSource : IClaudeScheduledUsageSource, IDis
 
     public async Task<ClaudeUsageObservation> RefreshAsync(CancellationToken cancellationToken)
     {
+        ClaudeUsageObservation? observation = await RefreshScheduledAsync(cancellationToken).ConfigureAwait(false);
+        if (observation is not null) return observation;
+        lock (_sync) return Failure(RetryReason(_lastFailure));
+    }
+
+    public async Task<ClaudeUsageObservation?> RefreshScheduledAsync(CancellationToken cancellationToken)
+    {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
         deadline.CancelAfter(_deadline);
         await ClaudeCliActiveSource.ConsoleExecutionGate.WaitAsync(deadline.Token).ConfigureAwait(false);
@@ -111,7 +118,7 @@ public sealed class MacClaudeAutomaticSource : IClaudeScheduledUsageSource, IDis
             if (state.Pending is not null) { ResetRetry(); return Failure("CLI_PREVIOUS_ATTEMPT_INCOMPLETE", UsageAvailability.Unsupported); }
             var block = state.Blocks.LastOrDefault(b => b.BinaryId == identity && b.ReleasedAt is null && (b.Contract.Length == 0 || b.Contract == _contract));
             if (block is not null) { ResetRetry(); return Failure(block.Reason, UsageAvailability.Unsupported); }
-            if (NextAttemptAt is { } retry && _time.GetUtcNow() < retry) return Failure(_failures >= 3 ? "CLI_CONFIRMATION_RETRYING" : _lastFailure);
+            if (NextAttemptAt is { } retry && _time.GetUtcNow() < retry) return null;
             if (changed || state.LastBinaryId != identity)
                 ProgressChanged?.Invoke(UsageSnapshot.Loading(UsageProvider.Claude, DateTimeOffset.UtcNow) with { Reason = "CLI_COMPATIBILITY_CHECKING" });
             state.Pending = new(Guid.NewGuid(), identity, DateTimeOffset.UtcNow);
@@ -144,8 +151,16 @@ public sealed class MacClaudeAutomaticSource : IClaudeScheduledUsageSource, IDis
                 Finish(state); ResetRetry(); return result;
             }
             Finish(state);
-            if (result.Availability is not (UsageAvailability.Setup or UsageAvailability.SignedOut)) Backoff(result.Snapshot.Reason ?? "CLI_CONFIRMATION_FAILED");
-            return _failures >= 3 ? new(result.Source, result.Snapshot with { Reason = "CLI_CONFIRMATION_RETRYING" }) : result;
+            if (result.Availability is UsageAvailability.Setup or UsageAvailability.SignedOut)
+            {
+                ResetRetry();
+                return result;
+            }
+            Backoff(result.Snapshot.Reason ?? "CLI_CONFIRMATION_FAILED");
+            string? retryReason = RetryReason(result.Reason);
+            return retryReason == result.Reason
+                ? result
+                : new(result.Source, result.Snapshot with { Reason = retryReason });
         }
         catch (OperationCanceledException)
         {
@@ -184,12 +199,15 @@ public sealed class MacClaudeAutomaticSource : IClaudeScheduledUsageSource, IDis
     { state.Blocks.Add(new(identity, "", reason, DateTimeOffset.UtcNow)); Finish(state); ResetRetry(); return Failure(reason, UsageAvailability.Unsupported); }
     private void Finish(ClaudeCompatibilityState state)
     { state.Pending = null; _store.Write(state); }
+    private string? RetryReason(string? reason) =>
+        _failures >= 3 && !ClaudeUsageFailure.RetainOnRetry(reason) ? "CLI_CONFIRMATION_RETRYING" : reason;
+
     private void Backoff(string reason)
     {
         lock (_sync)
         { _lastFailure = reason; _next = _time.GetUtcNow().AddMinutes(RetryMinutes[Math.Min(_failures++, 4)]); }
     }
-    private static ClaudeUsageObservation Failure(string reason, UsageAvailability availability = UsageAvailability.Unavailable) =>
+    private static ClaudeUsageObservation Failure(string? reason, UsageAvailability availability = UsageAvailability.Unavailable) =>
         new(ClaudeUsageSourceKind.CliScreen, UsageSnapshot.Loading(UsageProvider.Claude, DateTimeOffset.UtcNow) with { Availability = availability, Reason = reason });
     private sealed class CandidateLocator(ClaudeExecutableInfo candidate) : IClaudeExecutableLocator
     { public ClaudeExecutableInfo Resolve(string? path) => candidate; }
