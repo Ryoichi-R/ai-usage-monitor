@@ -1,6 +1,10 @@
+using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.Versioning;
+using System.Text.Json;
 using AiUsageMonitor.App.UI.Hosting;
 using AiUsageMonitor.Claude.Acquisition;
+using AiUsageMonitor.Core.Build;
 using AiUsageMonitor.Platform;
 using AiUsageMonitor.Platform.Mac;
 using Avalonia;
@@ -21,19 +25,36 @@ public sealed class MacLifecycleTests
         try
         {
             var paths = new MacAppPathProvider(root);
+            using var process = Process.GetCurrentProcess();
+            string identityPath = Path.Combine(paths.ApplicationSupportDirectory, "runtime-build",
+                process.Id.ToString(CultureInfo.InvariantCulture) + ".json");
             int nested = -1;
             int result = Program.Run([], paths, _ =>
             {
+                using var identity = JsonDocument.Parse(File.ReadAllText(identityPath));
+                JsonElement data = identity.RootElement;
+                Assert.Equal(1, data.GetProperty("SchemaVersion").GetInt32());
+                Assert.Equal("ai-usage-monitor", data.GetProperty("ProductId").GetString());
+                Assert.Equal(ProductBuildInfo.Current.Version, data.GetProperty("Version").GetString());
+                Assert.Equal(process.Id, data.GetProperty("ProcessId").GetInt32());
+                Assert.Equal(process.StartTime.ToUniversalTime().Ticks, data.GetProperty("ProcessStartUtcTicks").GetInt64());
+                Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite, File.GetUnixFileMode(identityPath));
                 // 起動中は同じlockを取れないため、二つ目は起動せずに0で終わる。
                 nested = Program.Run([], paths, _ => throw new InvalidOperationException("second instance started"));
                 return 7;
             });
             Assert.Equal(7, result);
             Assert.Equal(0, nested);
+            Assert.False(File.Exists(identityPath));
             Assert.False(Program.DemoMode);
             Assert.Equal(3, Program.Run(["--demo"], new MacAppPathProvider(Path.Combine(root, "unused")), _ => 3));
             Assert.True(Program.DemoMode);
             Assert.False(Directory.Exists(Path.Combine(root, "unused")));
+            Assert.Equal(4, Program.Run(["--work-status-test-root", root], paths, _ =>
+            {
+                Assert.False(File.Exists(identityPath));
+                return 4;
+            }));
             Assert.Equal(5, Program.Run([], paths, _ => 5));
             Assert.NotNull(Program.BuildAvaloniaApp());
         }

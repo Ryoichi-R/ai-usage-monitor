@@ -87,6 +87,11 @@ foreach ($file in @(Get-ChildItem -LiteralPath $macos -File -Recurse | Sort-Obje
         if ($LASTEXITCODE -ne 0) { throw 'NESTED_SIGN_FAILED' }
     }
 }
+[ordered]@{
+    SchemaVersion = 1
+    PayloadSha256 = (Get-FileHash -LiteralPath (Join-Path $macos 'AiUsageMonitor.Core.dll')).Hash.ToLowerInvariant()
+    BuildInfoSha256 = (Get-FileHash -LiteralPath (Join-Path $macos 'build-info.json')).Hash.ToLowerInvariant()
+} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $resources 'deployment-build.json') -Encoding utf8NoBOM
 & /usr/bin/codesign --force --sign - $app
 if ($LASTEXITCODE -ne 0) { throw 'BUNDLE_SIGN_FAILED' }
 & /usr/bin/codesign --verify --deep --strict $app

@@ -119,6 +119,11 @@ $executable = Join-Path $output 'AiUsageMonitor.App.exe'
 if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
     throw "Executable missing from publish output: $executable"
 }
+[ordered]@{
+    SchemaVersion = 1
+    PayloadSha256 = (Get-FileHash -LiteralPath $executable).Hash.ToLowerInvariant()
+    BuildInfoSha256 = (Get-FileHash -LiteralPath (Join-Path $output 'build-info.json')).Hash.ToLowerInvariant()
+} | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $output 'deployment-build.json') -Encoding utf8NoBOM
 $bridge = Join-Path $output 'claude-statusline-bridge.ps1'
 if (-not (Test-Path -LiteralPath $bridge -PathType Leaf)) {
     throw "Bridge missing from publish output: $bridge"

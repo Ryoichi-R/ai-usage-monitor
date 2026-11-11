@@ -75,7 +75,7 @@ try {
 @'
 @echo off
 if "%~3"=="rev-parse" (
-  echo 123456789abc
+  echo 123456789abcdef0123456789abcdef012345678
   exit /b __SOURCE_EXIT__
 )
 if "%~3"=="status" (
@@ -88,7 +88,7 @@ exit /b 1
 @'
 #!/bin/sh
 if [ "$3" = 'rev-parse' ]; then
-  echo 123456789abc
+  echo 123456789abcdef0123456789abcdef012345678
   exit __SOURCE_EXIT__
 fi
 if [ "$3" = 'status' ]; then
@@ -110,7 +110,7 @@ exit 1
         $env:PATH = $tools + [IO.Path]::PathSeparator + $previousPath
         foreach ($runtime in @('win-x64', 'win-arm64', 'osx-arm64')) {
             $info = Invoke-Snapshot $runtime
-            $expectedSource = if ($sourceExit -eq 0) { '123456789abc' } else { '不明' }
+            $expectedSource = if ($sourceExit -eq 0) { '123456789abcdef0123456789abcdef012345678' } else { '不明' }
             Assert-VersionContract ($info.SourceIdentifier -ceq $expectedSource) "Source mismatch: $state / $runtime"
             $expectedDirty = if ($sourceExit -ne 0 -or $statusExit -ne 0) { $null } else { $state -eq 'Dirty' }
             Assert-VersionContract ($info.HasUncommittedChanges -eq $expectedDirty) "Dirty state mismatch: $state / $runtime"

@@ -10,6 +10,7 @@ using AiUsageMonitor.Codex.Runtime;
 using AiUsageMonitor.Claude.Transport;
 using AiUsageMonitor.Claude.Windows.Cli;
 using AiUsageMonitor.Claude.Windows.Console;
+using AiUsageMonitor.Core.Build;
 using AiUsageMonitor.Core.Settings;
 using AiUsageMonitor.Core.Usage;
 using AiUsageMonitor.Platform;
@@ -54,19 +55,22 @@ public partial class App : System.Windows.Application
     private readonly Func<TrayController> _trayFactory;
     private readonly Action<bool> _applyStartupSetting;
     private readonly bool _startPassiveListener;
+    private readonly bool _publishRuntimeIdentity;
+    private RuntimeBuildIdentity? _runtimeIdentity;
     internal event Action? StartupCompleted;
     internal event Action<Exception>? StartupFailed;
 
-    public App() : this(new WindowsAppPathProvider(), LegacyMutexName, ActivationEventName) { }
+    public App() : this(new WindowsAppPathProvider(), LegacyMutexName, ActivationEventName, publishRuntimeIdentity: true) { }
 
     internal App(WindowsAppPathProvider appPaths, string mutexName, string activationEventName, Func<TrayController>? trayFactory = null, Action<bool>? applyStartupSetting = null,
         Func<ClaudeActiveSourceConfiguration, IClaudeUsageSource>? claudeSourceFactory = null,
-        bool startPassiveListener = true)
+        bool startPassiveListener = true, bool publishRuntimeIdentity = false)
     {
         _appPaths = appPaths ?? throw new ArgumentNullException(nameof(appPaths));
         _trayFactory = trayFactory ?? (() => new TrayController());
         _applyStartupSetting = applyStartupSetting ?? StartupRegistryService.Apply;
         _startPassiveListener = startPassiveListener;
+        _publishRuntimeIdentity = publishRuntimeIdentity;
         _mutexName = !string.IsNullOrWhiteSpace(mutexName) ? mutexName : throw new ArgumentException("Mutex name is required.", nameof(mutexName));
         _activationEventName = !string.IsNullOrWhiteSpace(activationEventName) ? activationEventName : throw new ArgumentException("Activation event name is required.", nameof(activationEventName));
         var diagnostics = new WindowsDiagnosticLog(Path.Combine(Path.GetDirectoryName(_appPaths.SettingsFilePath)!, "diagnostics.log"));
@@ -96,6 +100,8 @@ public partial class App : System.Windows.Application
             Shutdown();
             return;
         }
+        if (_publishRuntimeIdentity)
+            _runtimeIdentity = RuntimeBuildIdentity.TryPublish(Path.GetDirectoryName(_appPaths.SettingsFilePath)!);
         _activationChannel = WindowsInstanceActivationChannel.Listen(
             _activationEventName,
             () => Dispatcher.BeginInvoke(OnActivationRequested));
@@ -550,6 +556,7 @@ public partial class App : System.Windows.Application
 
     protected override async void OnExit(ExitEventArgs e)
     {
+        _runtimeIdentity?.Dispose();
         _lifetime.Cancel();
         _activationChannel?.Dispose();
         _backgroundCoordinator?.Dispose();

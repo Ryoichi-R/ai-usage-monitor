@@ -17,7 +17,7 @@
       <_BuildUtc>$([System.DateTime]::UtcNow.ToString('O'))</_BuildUtc>
       <_BuildInfoFile>$(IntermediateOutputPath)build-info.json</_BuildInfoFile>
     </PropertyGroup>
-    <Exec Command="git -C &quot;$(MSBuildThisFileDirectory)..&quot; rev-parse --short=12 HEAD"
+    <Exec Command="git -C &quot;$(MSBuildThisFileDirectory)..&quot; rev-parse HEAD"
           ConsoleToMSBuild="true" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true"
           StandardOutputImportance="Low" StandardErrorImportance="Low" EchoOff="true">
       <Output TaskParameter="ConsoleOutput" ItemName="_BuildGitSource" />
@@ -31,7 +31,7 @@
     </Exec>
     <PropertyGroup Condition="'$(_BuildGitSourceExitCode)' == '0'">
       <_BuildSourceCandidate>@(_BuildGitSource)</_BuildSourceCandidate>
-      <_BuildSource Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('$(_BuildSourceCandidate)', '^[0-9a-f]{7,40}$'))">$(_BuildSourceCandidate)</_BuildSource>
+      <_BuildSource Condition="$([System.Text.RegularExpressions.Regex]::IsMatch('$(_BuildSourceCandidate)', '^[0-9a-f]{40}$'))">$(_BuildSourceCandidate)</_BuildSource>
     </PropertyGroup>
     <PropertyGroup Condition="'$(_BuildGitStatusExitCode)' == '0' and '$(_BuildSource)' != '不明'">
       <_BuildStatusCount>@(_BuildGitStatus->Count())</_BuildStatusCount>

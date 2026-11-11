@@ -21,7 +21,7 @@ public sealed class ProductBuildInfoTests
         Assert.Equal(info.Version, FileVersionInfo.GetVersionInfo(assembly.Location).ProductVersion);
         Assert.Equal(TimeSpan.Zero, info.BuildTimeUtc.Offset);
         Assert.True(info.BuildTimeUtc <= DateTimeOffset.UtcNow);
-        Assert.True(info.SourceIdentifier == "不明" || System.Text.RegularExpressions.Regex.IsMatch(info.SourceIdentifier, "^[0-9a-f]{7,40}$"));
+        Assert.True(info.SourceIdentifier == "不明" || System.Text.RegularExpressions.Regex.IsMatch(info.SourceIdentifier, "^[0-9a-f]{40}$"));
     }
 
     [Fact]

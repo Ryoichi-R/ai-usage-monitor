@@ -1,4 +1,5 @@
 using System.Runtime.Versioning;
+using AiUsageMonitor.Core.Build;
 using AiUsageMonitor.Platform.Mac;
 using Avalonia;
 using Avalonia.Controls;
@@ -39,6 +40,9 @@ internal static class Program
             Console.Error.WriteLine("AI Usage Monitor is already running.");
             return 0;
         }
+        using var runtimeIdentity = args is ["--work-status-test-root", _]
+            ? null
+            : RuntimeBuildIdentity.TryPublish(paths.ApplicationSupportDirectory);
         return start(args);
     }
 

@@ -9,10 +9,18 @@ AI Usage Monitorの製品バージョンの正本は`Directory.Build.props`の`V
 
 ## ビルドと表示
 
-`dotnet publish --no-build`では既に埋め込んだビルド日時を保持します。通常の`dotnet build`／`dotnet publish`で、Coreのビルド直前にGit短縮ID（12桁）・作業ツリー全体の未コミット変更の有無・ビルド日時UTCを生成し、JSONをCoreへ埋め込みます。同じJSONを出力／配布へコピーします。trackedの変更と未追跡ファイルを含み、ignoredのbin／obj／artifactsは含めません。Git不在、Git情報未取得、HEAD未作成の場合はソース識別子と変更有無を「不明」にします。Gitの導入は不要です。
+`dotnet publish --no-build`では既に埋め込んだビルド日時を保持します。通常の`dotnet build`／`dotnet publish`で、Coreのビルド直前にGitの完全コミットSHA・作業ツリー全体の未コミット変更の有無・ビルド日時UTCを生成し、JSONをCoreへ埋め込みます。同じJSONを出力／配布へコピーします。trackedの変更と未追跡ファイルを含み、ignoredのbin／obj／artifactsは含めません。Git不在、Git情報未取得、HEAD未作成の場合はソース識別子と変更有無を「不明」にします。Gitの導入は不要です。
 
 画面とコピーは埋め込み情報から同じ順序で生成し、アプリの起動時刻・ファイル更新日時・リポジトリの再読込で置き換えません。OS名と実行中プロセスのアーキテクチャは.NETのOperatingSystem／RuntimeInformation.ProcessArchitectureから表示するため、エミュレーション中もアプリのアーキテクチャを示します。日時はUTCを明記し、端末の言語やタイムゾーンで変えません。ユーザー名、メール、リモートURL、絶対パス、認証情報は取得・埋め込みしません。
 
 設定の「バージョン情報」→「情報をコピー」で複数PCの情報を比較してください。版が同じでも、ソース識別子・変更有無・ビルド日時・実行版で違いを確認できます。変更有無が「あり」の場合、同じIDでも未コミットの内容が異なる可能性があります。未コミット内容の一致を保証するハッシュではありません。
 
 macOSは`scripts/publish-ai-usage-monitor-macos.ps1`、Windowsは`scripts/publish-ai-usage-monitor.ps1`（または既存rebuild入口）を使用します。macOSのInfo.plistとbundle-manifest.jsonはpublishで生成したJSONから版を取得します。既存の配布手順と実機受入要件は変更しません。今回の機能はオンラインの最新版判定や自動更新を行いません。
+
+## 稼働中の版の読み取り
+
+0.4.0から通常起動時に、Windowsでは `%LOCALAPPDATA%\CodexUsageMonitor\runtime-build\<PID>.json`、Macでは `~/Library/Application Support/AiUsageMonitor/runtime-build/<PID>.json` を利用者ローカルに原子的に作成します。試験起動や多重起動防止で退出したプロセスは作成しません。通常終了時は削除します。強制終了などで残ったファイルは、現在の本体プロセスとPID・起動時刻が一致しないため無効です。
+
+JSONの `SchemaVersion` は整数の `1`、`ProductId` は `ai-usage-monitor`、`Version` は製品版です。`CommitSha` は完全SHAまたは `null`、`HasUncommittedChanges` は真偽値または `null`、`ProcessId` は整数のPID、`ProcessStartUtcTicks` は .NET の `Process.StartTime.ToUniversalTime().Ticks` です。読取側は通常の本体プロセスをOSで確認し、情報の取得前後でそのPID・起動時刻が一致する場合だけ採用します。欠落や不一致は稼働版不明として扱います。
+
+配布物の `deployment-build.json` は、`SchemaVersion` の `1`、`PayloadSha256`、`BuildInfoSha256` を持ちます。Windowsでは単一ファイルの `AiUsageMonitor.App.exe` と同じフォルダ、Macでは `Contents/Resources` にあります。WindowsのEXEまたはMacの `Contents/MacOS/AiUsageMonitor.Core.dll` の内容を、その隣にある `build-info.json` と照合し、ディスク上の導入版を確認できます。

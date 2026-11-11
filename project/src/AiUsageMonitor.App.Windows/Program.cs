@@ -4,6 +4,7 @@ using AiUsageMonitor.Claude.Configuration;
 using AiUsageMonitor.Claude.Transport;
 using AiUsageMonitor.Claude.Windows.Cli;
 using AiUsageMonitor.Claude.Windows.Console;
+using AiUsageMonitor.Core.Build;
 using AiUsageMonitor.Platform.Windows;
 using AiUsageMonitor.Platform.Windows.Process;
 using AiUsageMonitor.Platform.Windows.Startup;
@@ -38,6 +39,9 @@ internal static class Program
             WindowsInstanceActivationChannel.TrySignal(CurrentActivationName);
             return 0;
         }
+        using var runtimeIdentity = IsolatedRoot is null
+            ? RuntimeBuildIdentity.TryPublish(Path.GetDirectoryName(new WindowsAppPathProvider().SettingsFilePath)!)
+            : null;
         return AppBuilder.Configure<WindowsApp>().UsePlatformDetect()
             .StartWithClassicDesktopLifetime(args, ShutdownMode.OnExplicitShutdown);
     }
