@@ -73,10 +73,13 @@ public sealed class MacLifecycleTests
         {
             var lifetime = new FakeLifetime();
             var codes = new List<string>();
-            var lifecycle = MacProductLifecycle.Start(lifetime.Shutdown, Services(root, () => new FakeLayer()), (code, _) => codes.Add(code));
+            var monitor = new FakeResumeMonitor();
+            var lifecycle = MacProductLifecycle.Start(lifetime.Shutdown,
+                Services(root, () => new FakeLayer(), resumeMonitor: monitor), (code, _) => codes.Add(code));
             Dispatcher.UIThread.RunJobs();
             await WaitUntil(() => codes.Contains("started"));
             Assert.True(lifecycle.Host.Window!.IsVisible);
+            Assert.True(monitor.Started);
 
             // OSからの終了要求は一度取り消し、hostの破棄後に改めて終了する。
             var request = new ShutdownRequestedEventArgs();
@@ -84,6 +87,7 @@ public sealed class MacLifecycleTests
             Assert.True(request.Cancel);
             await WaitUntil(() => lifetime.ExitCode is not null);
             Assert.Equal(0, lifetime.ExitCode);
+            Assert.True(monitor.Disposed);
             var again = new ShutdownRequestedEventArgs();
             lifecycle.OnShutdownRequested(again);
             Assert.False(again.Cancel);
@@ -152,7 +156,8 @@ public sealed class MacLifecycleTests
 
     private static void Click(NativeMenuItem item) => ((INativeMenuItemExporterEventsImplBridge)item).RaiseClicked();
 
-    private static WidgetHostServices Services(string root, Func<IWidgetLayerController> layer)
+    private static WidgetHostServices Services(string root, Func<IWidgetLayerController> layer,
+        FakeResumeMonitor? resumeMonitor = null)
     {
         var paths = new MacAppPathProvider(root);
         return new WidgetHostServices
@@ -161,6 +166,7 @@ public sealed class MacLifecycleTests
             Startup = new LaunchAgentStartupService(paths.LaunchAgentsDirectory, () => ["/fixture/monitor"]),
             ShellOpener = new MacShellOpener(_ => null),
             CreateLayerController = layer,
+            StartPowerResumeMonitor = resumeMonitor is null ? null : resumeMonitor.Start,
             ClaudeSourceFactory = _ => new UnavailableClaudeUsageSource(),
             ClaudeWorkspace = new AppPathClaudeWorkspace(paths),
             ClaudeBridgePath = Path.Combine(root, "bridge"),
@@ -199,6 +205,25 @@ public sealed class MacLifecycleTests
         public void SetClickThrough(bool enabled) => ClickThrough = enabled;
         public bool TryRecoverLayer() => true;
         public void Dispose() { }
+    }
+
+    private sealed class FakeResumeMonitor : IAsyncDisposable
+    {
+        public bool Started { get; private set; }
+        public bool Disposed { get; private set; }
+
+        public FakeResumeMonitor Start(Action request)
+        {
+            Started = true;
+            request();
+            return this;
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            Disposed = true;
+            return ValueTask.CompletedTask;
+        }
     }
 
     private sealed class FakeLifetime

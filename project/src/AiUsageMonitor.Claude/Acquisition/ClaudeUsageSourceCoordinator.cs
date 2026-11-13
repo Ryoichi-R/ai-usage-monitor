@@ -33,10 +33,12 @@ public sealed class ClaudeUsageSourceCoordinator : IAsyncDisposable
         if (_activeSource is IDisposable disposable) disposable.Dispose();
     }
 
-    public bool IsRefreshInFlight
+    public Task? PendingRefresh
     {
-        get { lock (_sync) return _inFlight is { IsCompleted: false }; }
+        get { lock (_sync) return _inFlight is { IsCompleted: false } pending ? pending : null; }
     }
+
+    public bool IsRefreshInFlight => PendingRefresh is not null;
 
     public Task<ClaudeActiveRefreshOutcome> RefreshAsync(
         ClaudeUsageAcquisitionMode mode,
@@ -55,7 +57,7 @@ public sealed class ClaudeUsageSourceCoordinator : IAsyncDisposable
                 return Task.FromResult(ClaudeActiveRefreshOutcome.Skipped(
                     now,
                     "ACTIVE_BACKOFF"));
-            if (_inFlight is null)
+            if (_inFlight is null or { IsCompleted: true })
             {
                 if (manual) ScheduledSource?.ResetRetry();
                 Task<ClaudeActiveRefreshOutcome> created = RefreshCoreAsync(now);

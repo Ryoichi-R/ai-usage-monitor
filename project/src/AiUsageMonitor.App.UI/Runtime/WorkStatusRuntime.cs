@@ -11,7 +11,7 @@ internal sealed class WorkStatusRuntime : IAsyncDisposable
     private readonly string? _startupProblem;
     private readonly string _root;
     private readonly Func<IReadOnlyList<WorkSession>, DateTimeOffset, IReadOnlyDictionary<string, DateTimeOffset>>? _readClaudeBusySince;
-    private WorkStatusSnapshot _current = new(new(), null);
+    private WorkStatusViewSnapshot _current = WorkStatusViewSnapshot.Empty;
 
     public WorkStatusRuntime(string root, Action<string, Exception?> diagnostic,
         Func<IReadOnlyList<WorkSession>, DateTimeOffset, IReadOnlyDictionary<string, DateTimeOffset>>? readClaudeBusySince = null)
@@ -19,19 +19,19 @@ internal sealed class WorkStatusRuntime : IAsyncDisposable
         _root = root;
         _diagnostic = diagnostic;
         _readClaudeBusySince = readClaudeBusySince;
-        try { _collector = new(new(root)); _current = _collector.Current; }
+        try { _collector = new(new(root)); _current = _collector.CurrentView; }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
         {
             _startupProblem = "作業状態を読み込めません。元の状態ファイルは保持しています。";
-            _current = new(new(), _startupProblem);
+            _current = _current with { Problem = _startupProblem };
             Report("work-status-load-failed", error);
         }
     }
 
-    public WorkStatusSnapshot Current => _current;
+    public WorkStatusViewSnapshot Current => _current;
     public IReadOnlyDictionary<string, DateTimeOffset>? ClaudeBusySince { get; private set; }
 
-    public async Task<WorkStatusSnapshot> PollAsync(CancellationToken cancellationToken, bool observeClaude = false)
+    public async Task<WorkStatusViewSnapshot> PollAsync(CancellationToken cancellationToken, bool observeClaude = false)
     {
         if (_collector is null) return new(_current.Model, _startupProblem);
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -40,7 +40,7 @@ internal sealed class WorkStatusRuntime : IAsyncDisposable
             (_current, ClaudeBusySince) = await Task.Run(() =>
             {
                 DateTimeOffset now = DateTimeOffset.UtcNow;
-                WorkStatusSnapshot snapshot = _collector.Poll(now);
+                WorkStatusViewSnapshot snapshot = _collector.PollView(now);
                 return (snapshot, observeClaude ? _readClaudeBusySince?.Invoke(snapshot.Model.Sessions, now) : null);
             }, cancellationToken).ConfigureAwait(false);
             if (_current.Problem is { } reason)
@@ -59,11 +59,11 @@ internal sealed class WorkStatusRuntime : IAsyncDisposable
         return _current;
     }
 
-    public async Task<WorkStatusSnapshot> AcknowledgeAsync(IReadOnlyList<string> ids)
+    public async Task<WorkStatusViewSnapshot> AcknowledgeAsync(IReadOnlyList<string> ids)
     {
         if (_collector is null) return _current;
         await _gate.WaitAsync().ConfigureAwait(false);
-        try { _current = await Task.Run(() => _collector.Acknowledge(ids)).ConfigureAwait(false); }
+        try { _current = await Task.Run(() => _collector.AcknowledgeView(ids)).ConfigureAwait(false); }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
             _current = new(_current.Model, "確認状態を保存できません。未確認通知を残しています。");
@@ -84,7 +84,7 @@ internal sealed class WorkStatusRuntime : IAsyncDisposable
     {
         if (_collector is null) return false;
         await _gate.WaitAsync().ConfigureAwait(false);
-        try { _current = await Task.Run(() => _collector.ImportLegacy(oldRoot)).ConfigureAwait(false); return true; }
+        try { _current = await Task.Run(() => _collector.ImportLegacyView(oldRoot)).ConfigureAwait(false); return true; }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException or System.Text.Json.JsonException or InvalidOperationException or ArgumentException or FormatException or KeyNotFoundException or OverflowException)
         { Report("work-status-import-failed", error); return false; }
         finally { _gate.Release(); }

@@ -1,3 +1,4 @@
+using AiUsageMonitor.TestSupport;
 using AiUsageMonitor.Core.WorkStatus;
 
 namespace AiUsageMonitor.WorkStatus.Tests;
@@ -7,8 +8,7 @@ public sealed class SnapshotConcurrencyTests
     [Fact]
     public async Task ReaderDoesNotBlockAtomicSnapshotReplacement()
     {
-        string parent = Environment.GetEnvironmentVariable("AI_USAGE_MONITOR_TEST_ARTIFACTS_ROOT") ?? Path.GetTempPath();
-        string root = Path.Combine(parent, "work-concurrent", Guid.NewGuid().ToString("N"));
+        string root = WorkStatusTestDirectory.Create("work-concurrent");
         var writer = new WorkStatusStore(root);
         var model = new WorkStatusModel();
         for (int index = 0; index < 400; index++)
@@ -85,9 +85,5 @@ public sealed class SnapshotConcurrencyTests
         Assert.Equal(["state.json"], Directory.GetFiles(root).Select(Path.GetFileName));
     }
 
-    private static string CreateRoot(string name)
-    {
-        string parent = Environment.GetEnvironmentVariable("AI_USAGE_MONITOR_TEST_ARTIFACTS_ROOT") ?? Path.GetTempPath();
-        return Path.Combine(parent, name, Guid.NewGuid().ToString("N"));
-    }
+    private static string CreateRoot(string name) => WorkStatusTestDirectory.Create(name);
 }

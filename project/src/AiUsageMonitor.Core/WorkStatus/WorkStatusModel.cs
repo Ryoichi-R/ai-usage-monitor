@@ -30,7 +30,13 @@ public sealed record WorkStatusSummary(int Running, int Waiting, int Unknown, in
     public int Failed => Notices.Count(n => n.State == WorkSessionState.Failed);
 }
 
-public sealed class WorkStatusModel
+public interface IWorkStatusView
+{
+    IReadOnlyList<WorkSession> Sessions { get; }
+    WorkStatusSummary Summarize(WorkProvider provider, DateTimeOffset now, bool available);
+}
+
+public sealed class WorkStatusModel : IWorkStatusView
 {
     public const int CurrentVersion = 1;
     [JsonRequired] public int Version { get; set; } = CurrentVersion;
@@ -41,6 +47,8 @@ public sealed class WorkStatusModel
     [JsonRequired] public HashSet<string> Imports { get; set; } = [];
     public List<WorkQuestion> PendingQuestions { get; set; } = [];
     public HashSet<string> AnsweredQuestionIds { get; set; } = [];
+
+    IReadOnlyList<WorkSession> IWorkStatusView.Sessions => Sessions.AsReadOnly();
 
     public static bool Valid(WorkStatusEvent? value) => value is { Protocol: 1, DesktopVerified: true } &&
         Enum.IsDefined(value.Provider) && Enum.IsDefined(value.Kind) &&

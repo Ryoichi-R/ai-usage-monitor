@@ -72,6 +72,7 @@ Claude Code 2.1.274では、5時間枠が0%の画面でリセット時刻の行�
 macOS版の仕組みは[ADR 009](../adr/009-macos-widget-layer-control.md)と[ADR 010](../adr/010-macos-claude-cli-screen-acquisition.md)を参照してください。診断ログは`~/Library/Logs/AiUsageMonitor/diagnostic.log`で、理由コードと例外の型名だけを記録します。
 
 - **初回起動で「開けません」と表示される**: 自分で作った`.app`は通常そのまま開けます。別の場所から複製した場合は、Finderで右クリック→「開く」で許可してください。notarizationは行っていません。
+- **スリープ復帰後にClaudeの表示が古い**。連携済みのCLI取得では、10秒を超える本体スリープを検出すると `power-resume-detected` を記録します。メイン画面が消灯していれば `power-resume-deferred` を記録し、点灯を待ちます。復帰時の取得開始は `claude-resume-refresh` で確認できます。開始時に再試行間隔をリセットし、通信に失敗した場合は通常の間隔で再試行します。画面だけの消灯・点灯では定期取得が続きます。[ADR 013](../adr/013-macos-claude-resume-refresh.md)
 - **メニューバーのアイコンが出ない**: macOS 27ではAvaloniaの既知の問題（メニューバーが消える、AvaloniaUI/Avalonia#22285）を追跡中です。メニューバーの項目が多い場合は、表示しきれずに隠れていないかも確認してください。
 - **`widget-layer-degraded`が診断ログに出る**: 常に手前・最背面・クリック透過の設定がwindowへ反映されていません。設定を切り替え直し、改善しない場合はmacOSとAvaloniaの版を記録して報告してください。
 - `CLI_COMPATIBILITY_CHECKING`: Claude Codeの実体変更後の確認中です。既知の画面を解析し、正常回収まで成立すれば自動で再開します。

@@ -44,6 +44,7 @@ public sealed class WidgetHost : IAsyncDisposable
     private WorkStatusSetupWindow? _workSetupWindow;
     private Task? _codexPollTask;
     private Task? _claudePollTask;
+    private IAsyncDisposable? _powerResumeMonitor;
     private TrayIcon? _tray;
     private readonly List<(WorkStatusRowViewModel Row, NativeMenuItem Item)> _workNoticeItems = [];
     private bool _workMenuOpen;
@@ -143,6 +144,7 @@ public sealed class WidgetHost : IAsyncDisposable
         _claudeRuntime.SnapshotChanged += DispatchClaudeSnapshot;
         ConfigureClaude();
         ApplyStartupSetting();
+        _powerResumeMonitor = _services.StartPowerResumeMonitor?.Invoke(_claudeSchedule.RequestResume);
         await RefreshAsync(_lifetime.Token);
         // Opened runs before the initial layout and provider-dependent height settle.
         // Keep applying the saved intent until that first refresh has been laid out.
@@ -632,12 +634,13 @@ public sealed class WidgetHost : IAsyncDisposable
         {
             double jitter = 0.9 + (Random.Shared.NextDouble() * 0.2);
             TimeSpan delay = TimeSpan.FromSeconds(_settings.RefreshIntervalSeconds * jitter);
-            await _claudeSchedule.WaitAsync(DateTimeOffset.UtcNow + delay, () => _claudeRuntime.NextAttemptAt, cancellationToken);
+            bool resume = await _claudeSchedule.WaitAsync(DateTimeOffset.UtcNow + delay, () => _claudeRuntime.NextAttemptAt, cancellationToken);
             try
             {
-                await RefreshAsync(cancellationToken, refreshCodex: false);
+                await RefreshAsync(cancellationToken, refreshCodex: false, resume: resume, waitForOwner: true);
             }
-            catch (Exception exception) when (exception is not OperationCanceledException)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return; }
+            catch (Exception exception)
             {
                 // RefreshAsync内部で拾いきれない想定外の失敗でも、このループ自体は継続する。
                 _services.Diagnostic("claude-poll-failure", exception);
@@ -645,11 +648,14 @@ public sealed class WidgetHost : IAsyncDisposable
         }
     }
 
-    private async Task RefreshAsync(CancellationToken cancellationToken, bool manual = false, bool refreshCodex = true)
+    private async Task RefreshAsync(CancellationToken cancellationToken, bool manual = false, bool refreshCodex = true, bool resume = false, bool waitForOwner = false)
     {
         // Polling is authoritative (ADR 002); notifications are best-effort hints and may be coalesced.
         if (_viewModel is null) return;
-        if (!await _refreshGate.WaitAsync(0, cancellationToken))
+        // Periodic/resume requests must yield to the owner, then perform their pending refresh.
+        // Returning immediately here would consume a due retry without doing any work.
+        if (resume || waitForOwner) await _refreshGate.WaitAsync(cancellationToken);
+        else if (!await _refreshGate.WaitAsync(0, cancellationToken))
         {
             if (manual)
             {
@@ -688,13 +694,21 @@ public sealed class WidgetHost : IAsyncDisposable
                     });
                 }
             }
-            if (_settings.ShowClaudeUsage && _claudeRuntime.IsConfigured)
+            Task? claudeRefresh = null;
+            if (resume)
             {
-                Task<UsageSnapshot> claudeRefresh = _claudeRuntime.RefreshAsync(
+                claudeRefresh = _claudeRuntime.RefreshAfterResumeAsync(ConsumeClaudeResume, cancellationToken);
+            }
+            else if (_settings.ShowClaudeUsage && _claudeRuntime.IsConfigured)
+            {
+                claudeRefresh = _claudeRuntime.RefreshAsync(
                     _settings.ClaudeUsageAcquisitionMode,
                     manual,
                     DateTimeOffset.UtcNow,
                     cancellationToken);
+            }
+            if (claudeRefresh is not null)
+            {
                 _manualRefreshState.Enter(RefreshPhase.Claude, claudeRefresh);
                 try
                 {
@@ -723,6 +737,12 @@ public sealed class WidgetHost : IAsyncDisposable
             try { await RefreshAsync(cancellationToken, manual: true); }
             finally { _manualRefreshState.EndDrain(); }
         }
+    }
+
+    private bool ConsumeClaudeResume()
+    {
+        _claudeSchedule.ConsumeResume();
+        return _settings.ShowClaudeUsage && _settings.ClaudeSetupCompleted;
     }
 
     private bool CodexFeaturesEnabled() =>
@@ -897,6 +917,7 @@ public sealed class WidgetHost : IAsyncDisposable
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         _lifetime.Cancel();
+        if (_powerResumeMonitor is not null) await _powerResumeMonitor.DisposeAsync();
         _claudeRuntime.Disable();
         await _claudeRuntime.StopAsync();
         // 通常はOperationCanceledExceptionだけで終わるが、想定外の例外が残っていても以降の破棄は必ず続ける。

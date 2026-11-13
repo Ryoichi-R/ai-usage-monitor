@@ -138,6 +138,8 @@ CodexとClaudeで同じ水平位置に揃えます。
 
 共通Avalonia UI、Codex stdio監視、プロセス回収helper、メニューバー、LaunchAgentの実装があります。macOSのClaude取得は、署名検証付きPTYでの`/usage`取得とstatusLine受信に対応しています。active取得はCLIの版を固定せず、公式署名・実体一致・画面解析・正常回収を毎回確認します。更新後の初回取得が成立すれば自動で監視を継続します。未知の画面や安全異常は停止し、互換性を確認できない一時失敗は1・5・15・30・60分（以後60分）で再試行します。新しい実体は通常の確認周期で検知します。
 
+連携済みのClaude CLI利用枠は、本体が10秒を超えてスリープした後、メイン画面が点灯すると数秒以内に再取得を要求します。取得中なら完了を待ち、再試行間隔をリセットして1回取得します。互換性停止と安全停止の解除は設定画面から行います。
+
 ```powershell
 dotnet build AiUsageMonitor.Mac.slnx
 pwsh -NoProfile -File scripts/test-ai-usage-monitor.ps1 -Coverage

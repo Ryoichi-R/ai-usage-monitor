@@ -42,6 +42,9 @@ public sealed class WidgetHostServices
     /// <summary>常駐Claude Codeセッションからのpassive受信口。nullならpassive取得を行わない。</summary>
     public Func<IClaudeUsageListener>? CreateClaudeListener { get; init; }
 
+    /// <summary>Starts optional system resume monitoring. The callback may run off the UI thread.</summary>
+    public Func<Action, IAsyncDisposable>? StartPowerResumeMonitor { get; init; }
+
     /// <summary>Codex app-serverの寿命管理。nullならCodexAppServerProcessの破棄処理だけで終了させる。</summary>
     public Func<System.Diagnostics.Process, IDisposable>? CodexLifetimeGuardFactory { get; init; }
 

@@ -17,6 +17,124 @@ public sealed class WorkStatusTests
         return path;
     }
 
+    [Fact]
+    public void UnreadableEventKeepsWarningThroughBackoffAndAcknowledgementUntilRepaired()
+    {
+        string root = Fixture();
+        try
+        {
+            var collector = new WorkStatusCollector(new(root));
+            WorkStatusCollector.WriteEvent(root, Event(WorkEventKind.Completed));
+            string notice = Assert.Single(collector.PollView(Now).Model.Notices).Id;
+            string path = Path.Combine(root, "events", "unreadable.json");
+            File.WriteAllText(path, "{");
+            Assert.Equal("WORK_STATUS_EVENT_UNREADABLE", collector.PollView(Now).Problem);
+            WorkStatusViewSnapshot waiting = collector.PollView(Now.AddSeconds(2));
+            Assert.Equal("WORK_STATUS_EVENT_UNREADABLE", waiting.Problem);
+            Assert.Null(waiting.UnavailableProviders); // The damaged event cannot be attributed to one provider.
+            Assert.Equal("WORK_STATUS_EVENT_UNREADABLE", collector.AcknowledgeView([notice]).Problem);
+            Assert.Equal("WORK_STATUS_EVENT_UNREADABLE", collector.CurrentView.Problem);
+            File.WriteAllBytes(path, JsonSerializer.SerializeToUtf8Bytes(Event(WorkEventKind.Started, 3, turn: "next"), WorkStatusStore.JsonOptions));
+            Assert.NotNull(collector.PollView(Now.AddSeconds(4)).Problem);
+            WorkStatusViewSnapshot repaired = collector.PollView(Now.AddSeconds(30));
+            Assert.Null(repaired.Problem);
+            Assert.Equal(WorkSessionState.Running, Assert.Single(repaired.Model.Sessions).State);
+            Assert.Empty(repaired.Model.Notices);
+            Assert.False(File.Exists(path));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RemovedUnreadableEventClearsWarningBeforeRetryDeadline(bool removeDirectory)
+    {
+        string root = Fixture();
+        try
+        {
+            var collector = new WorkStatusCollector(new(root));
+            string events = Directory.CreateDirectory(Path.Combine(root, "events")).FullName;
+            string path = Path.Combine(events, "unreadable.json");
+            File.WriteAllText(path, "{");
+            Assert.NotNull(collector.PollView(Now).Problem);
+            if (removeDirectory) Directory.Delete(events, recursive: true); else File.Delete(path);
+            Assert.Null(collector.PollView(Now.AddSeconds(2)).Problem);
+            Assert.Null(collector.CurrentView.Problem);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public void RepairedUnreadableEventWithUnknownProtocolBecomesProviderScopedFailure()
+    {
+        string root = Fixture();
+        try
+        {
+            var collector = new WorkStatusCollector(new(root));
+            string events = Directory.CreateDirectory(Path.Combine(root, "events")).FullName;
+            string path = Path.Combine(events, "unreadable.json");
+            File.WriteAllText(path, "{");
+            Assert.NotNull(collector.PollView(Now).Problem);
+            File.WriteAllBytes(path, JsonSerializer.SerializeToUtf8Bytes(Event(WorkEventKind.Started) with { Protocol = 99 }, WorkStatusStore.JsonOptions));
+            WorkStatusViewSnapshot invalid = collector.PollView(Now.AddSeconds(30));
+            Assert.Equal("WORK_STATUS_EVENT_INVALID", invalid.Problem);
+            Assert.Equal(WorkProvider.CodexDesktop, Assert.Single(invalid.UnavailableProviders!));
+            Assert.Equal(WorkProvider.CodexDesktop, Assert.Single(collector.PollView(Now.AddSeconds(32)).UnavailableProviders!));
+            Assert.True(File.Exists(path));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public void UnchangedPollReusesPublishedModelWithoutCopyingOrSaving()
+    {
+        string root = Fixture();
+        try
+        {
+            var store = new WorkStatusStore(root);
+            var initial = new WorkStatusModel();
+            for (int i = 0; i < 1200; i++)
+                initial.Sessions.Add(new(WorkProvider.CodexDesktop, "fixture-" + i, "t", WorkSessionState.Idle, Now, 0));
+            store.Save(initial);
+            string state = Path.Combine(root, "state.json");
+            File.SetLastWriteTimeUtc(state, Now.UtcDateTime);
+            DateTime written = File.GetLastWriteTimeUtc(state);
+            var collector = new WorkStatusCollector(store);
+            WorkStatusView published = collector.CurrentView.Model;
+            Assert.Same(published, collector.PollView(Now).Model);
+
+            string spool = Directory.CreateDirectory(Path.Combine(root, "events")).FullName;
+            Assert.Same(published, collector.PollView(Now).Model);
+            File.WriteAllBytes(Path.Combine(spool, "invalid.json"), JsonSerializer.SerializeToUtf8Bytes(
+                Event(WorkEventKind.Started) with { Protocol = 99 }, WorkStatusStore.JsonOptions));
+            File.WriteAllText(Path.Combine(spool, "unreadable.json"), "{");
+            Assert.Equal("WORK_STATUS_EVENT_UNREADABLE", collector.PollView(Now).Problem);
+
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            WorkStatusViewSnapshot poll = collector.PollView(Now.AddSeconds(2));
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            Assert.True(allocated < new FileInfo(state).Length, $"The poll allocated {allocated} bytes.");
+            Assert.Same(published, poll.Model);
+            Assert.Equal("WORK_STATUS_EVENT_INVALID", poll.Problem);
+            Assert.Null(poll.UnavailableProviders); // The unreadable event cannot be scoped to Codex alone.
+            Assert.Equal(written, File.GetLastWriteTimeUtc(state));
+
+            WorkStatusCollector.WriteEvent(root, Event(WorkEventKind.Completed));
+            WorkStatusView updated = collector.PollView(Now).Model;
+            Assert.NotSame(published, updated);
+            Assert.Empty(published.Notices);
+            Assert.Single(updated.Notices);
+            Assert.Single(store.Load().ProcessedIds);
+            Assert.Empty(collector.Current.Model.ProcessedIds);
+            WorkStatusModel editableCopy = collector.Current.Model;
+            editableCopy.Sessions.Clear();
+            Assert.Equal(1201, updated.Sessions.Count);
+            Assert.Throws<NotSupportedException>(() => ((IList<WorkSession>)updated.Sessions).Clear());
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
     [Theory]
     [InlineData(WorkEventKind.Connected, WorkSessionState.Idle)]
     [InlineData(WorkEventKind.Started, WorkSessionState.Running)]
@@ -259,7 +377,9 @@ public sealed class WorkStatusTests
         var collector = new WorkStatusCollector(new(root));
         WorkStatusCollector.WriteEvent(root, Event(WorkEventKind.Completed));
         Directory.CreateDirectory(Path.Combine(root, "state.json"));
-        Exception? error = Record.Exception(() => collector.Poll(Now));
+        WorkStatusView original = collector.CurrentView.Model;
+        Exception? error = Record.Exception(() => collector.PollView(Now));
+        Assert.Same(original, collector.CurrentView.Model);
         Assert.True(error is IOException or UnauthorizedAccessException);
         Assert.Empty(collector.Current.Model.Notices);
         Assert.Single(Directory.GetFiles(Path.Combine(root, "events")));

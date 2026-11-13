@@ -25,6 +25,10 @@ public sealed class MacCompositionTests
             Assert.IsType<MacManagedProcessLauncher>(services.CodexProcessLauncher);
             Assert.Null(services.CodexLifetimeGuardFactory);
             Assert.NotNull(services.CreateClaudeListener);
+            Assert.NotNull(services.StartPowerResumeMonitor);
+            Assert.Null(MacComposition.Create(paths, log, workStatusOnly: true).StartPowerResumeMonitor);
+            await using var monitor = services.StartPowerResumeMonitor(() => { });
+            Assert.IsType<MacPowerResumeMonitor>(monitor);
             // 生成だけでは受信口を開かない（socketはhostのStartで作る）。
             Assert.IsType<AiUsageMonitor.Claude.Mac.ClaudeUsageSocketListener>(services.CreateClaudeListener());
             // 自動起動は明示したhome配下のLaunchAgentsだけへ書き、解除で消す。
@@ -43,6 +47,7 @@ public sealed class MacCompositionTests
             string content = File.ReadAllText(log.FilePath);
             Assert.Contains("test-code IOException", content, StringComparison.Ordinal);
             Assert.DoesNotContain("must-not-be-logged", content, StringComparison.Ordinal);
+            Assert.DoesNotContain("power-resume-monitor-failure", content, StringComparison.Ordinal);
             Assert.True(DemoUsageData.Create().ShowCodex);
             using var layer = services.CreateLayerController();
             Assert.IsType<MacWidgetLayerController>(layer);

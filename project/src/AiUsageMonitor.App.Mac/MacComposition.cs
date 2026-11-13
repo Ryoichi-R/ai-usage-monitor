@@ -40,6 +40,8 @@ internal static class MacComposition
             ClaudeWorkspace = workspace,
             ClaudeBridgePath = bridge,
             ClaudeSetupExample = ClaudeStatusLineBridge.CreateSetupExample(bridge),
+            StartPowerResumeMonitor = workStatusOnly
+                ? null : request => new MacPowerResumeMonitor(request, log.Write),
             CreateClaudeListener = () => new ClaudeUsageSocketListener(),
             CodexProcessLauncher = new MacManagedProcessLauncher(
                 Path.Combine(baseDirectory, "ai-usage-process-supervisor"),

@@ -155,6 +155,45 @@ internal sealed class ClaudeUsageRuntime
         };
     }
 
+    public async Task RefreshAfterResumeAsync(Func<bool> consumeRequest, CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            Task attempt;
+            bool started;
+            lock (_sync)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (_coordinator is null || _configuration is not { } configuration ||
+                    configuration.AcquisitionMode == ClaudeUsageAcquisitionMode.StatusLineOnly)
+                {
+                    consumeRequest();
+                    return;
+                }
+
+                // Setup can run outside the host refresh gate. Wait for it to settle before resetting backoff.
+                if (_coordinator.PendingRefresh is { } pending)
+                {
+                    attempt = pending;
+                    started = false;
+                }
+                else
+                {
+                    if (!consumeRequest()) return;
+                    _diagnostic?.Invoke("claude-resume-refresh");
+                    attempt = RefreshAsync(configuration.AcquisitionMode, manual: true, DateTimeOffset.UtcNow, cancellationToken);
+                    started = true;
+                }
+            }
+            try { await attempt.WaitAsync(cancellationToken); }
+            catch (OperationCanceledException) when (!started && !cancellationToken.IsCancellationRequested)
+            {
+                // A settings change can retire the setup attempt while the request is pending.
+            }
+            if (started) return;
+        }
+    }
+
     public async Task<UsageSnapshot> RefreshAsync(
         ClaudeUsageAcquisitionMode mode,
         bool manual,

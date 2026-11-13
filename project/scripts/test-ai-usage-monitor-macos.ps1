@@ -5,7 +5,12 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 if (-not $IsMacOS) { throw 'MACOS_REQUIRED' }
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-$parent = if ($OutputRoot) { [IO.Path]::GetFullPath($OutputRoot) } else { [IO.Path]::GetTempPath() }
+$parent = if ($OutputRoot) { [IO.Path]::GetFullPath($OutputRoot) } else {
+    # macOS TMPDIR can traverse /var, which the WorkStatus fixtures intentionally reject.
+    $physicalTemp = & /bin/zsh -fc 'cd -P -- "$1" && pwd -P' _ ([IO.Path]::GetTempPath())
+    if ($LASTEXITCODE -ne 0) { throw 'TEST_TEMP_PATH_UNAVAILABLE' }
+    $physicalTemp
+}
 if ($parent -eq $root -or $parent.StartsWith($root + '/', [StringComparison]::Ordinal)) { throw 'TEST_OUTPUT_MUST_BE_OUTSIDE_PROJECT' }
 $output = Join-Path $parent ('AiUsageMonitorMacTests-' + [Guid]::NewGuid().ToString('N'))
 $artifacts = Join-Path $output 'artifacts'

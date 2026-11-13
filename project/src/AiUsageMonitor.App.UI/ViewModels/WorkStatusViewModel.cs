@@ -13,7 +13,7 @@ public sealed class WorkStatusViewModel : INotifyPropertyChanged
     public bool IsVisible { get => _visible; private set { _visible = value; PropertyChanged?.Invoke(this, new(nameof(IsVisible))); } }
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    public void Update(WorkStatusModel model, bool codex, bool claude, string? problem, DateTimeOffset now,
+    public void Update(IWorkStatusView model, bool codex, bool claude, string? problem, DateTimeOffset now,
         IReadOnlySet<WorkProvider>? unavailableProviders = null, IReadOnlyDictionary<string, DateTimeOffset>? claudeBusySince = null)
     {
         ArgumentNullException.ThrowIfNull(model);
@@ -47,7 +47,7 @@ public sealed class WorkStatusRowViewModel : INotifyPropertyChanged
     public event Action<IReadOnlyList<string>>? AcknowledgeRequested;
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    internal void Update(WorkStatusModel model, bool visible, string? problem, DateTimeOffset now, bool available,
+    internal void Update(IWorkStatusView model, bool visible, string? problem, DateTimeOffset now, bool available,
         IReadOnlyDictionary<string, DateTimeOffset>? busySince)
     {
         IsVisible = visible;

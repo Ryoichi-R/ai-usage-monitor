@@ -58,6 +58,9 @@ public sealed class AutomaticCompatibilityTests
         Assert.Equal(reason, (await source.RefreshAsync(default)).Reason);
         Assert.Equal(1, calls); Assert.Single(fixture.Store.Read().Blocks);
         Assert.Contains(reason, source.DescribeStop());
+        source.ResetRetry();
+        Assert.Equal(reason, (await source.RefreshAsync(default)).Reason);
+        Assert.Equal(1, calls);
         source.Recheck(releaseSafety: reportCode == "claude-cleanup-failed");
         await source.RefreshAsync(default); Assert.Equal(2, calls);
     }
@@ -105,6 +108,9 @@ public sealed class AutomaticCompatibilityTests
         fixture.Store.Write(new() { Pending = new(Guid.NewGuid(), MacClaudeBinaryIdentity.Parse(IdentityA).Key, DateTimeOffset.UtcNow) });
         using var source = fixture.Create((report, token) => throw new InvalidOperationException("must not launch"));
         Assert.Equal("CLI_PREVIOUS_ATTEMPT_INCOMPLETE", (await source.RefreshAsync(default)).Reason);
+        source.ResetRetry();
+        Assert.Equal("CLI_PREVIOUS_ATTEMPT_INCOMPLETE", (await source.RefreshAsync(default)).Reason);
+        Assert.NotNull(fixture.Store.Read().Pending);
         Assert.Throws<IOException>(() => source.Recheck(false));
         Assert.Contains("未完了", source.DescribeStop());
         source.Recheck(true); Assert.Null(fixture.Store.Read().Pending);
@@ -329,6 +335,33 @@ public sealed class AutomaticCompatibilityTests
         Assert.Equal("CLI_PREVIOUS_ATTEMPT_INCOMPLETE", (await source.RefreshAsync(default)).Reason);
         Assert.NotNull(fixture.Store.Read().Pending); Assert.Empty(fixture.Store.Read().Blocks);
         Assert.Equal("CLI_PREVIOUS_ATTEMPT_INCOMPLETE", (await source.RefreshAsync(default)).Reason);
+    }
+
+    [Theory]
+    [InlineData("CLAUDE_NOT_INSTALLED")]
+    [InlineData("SIGNATURE_VERIFICATION_FAILED")]
+    public async Task LocatorFailureClearsExpiredRetryWithoutReleasingSafetyStop(string failure)
+    {
+        using var fixture = new Fixture();
+        var time = new Clock();
+        int calls = 0;
+        using var source = new MacClaudeAutomaticSource(null, fixture.Locator, fixture.Store, "test", TimeSpan.FromSeconds(5),
+            (_, _, _) => new Source(_ => { calls++; return Task.FromResult(Failed()); }), time);
+        await source.RefreshScheduledAsync(default);
+        time.Now = source.NextAttemptAt!.Value.AddSeconds(1);
+        fixture.Locator.FailureReason = failure;
+        Assert.Equal(failure, (await source.RefreshScheduledAsync(default))!.Reason);
+        Assert.Null(source.NextAttemptAt);
+        Assert.Equal(1, calls);
+        if (failure == "SIGNATURE_VERIFICATION_FAILED") Assert.NotNull(fixture.Store.Read().Pending);
+        fixture.Locator.FailureReason = null;
+        ClaudeUsageObservation? recovered = await source.RefreshScheduledAsync(default);
+        if (failure == "SIGNATURE_VERIFICATION_FAILED")
+        {
+            Assert.Equal("CLI_PREVIOUS_ATTEMPT_INCOMPLETE", recovered!.Reason);
+            Assert.Equal(1, calls);
+        }
+        else Assert.Equal(2, calls);
     }
 
     private sealed class Clock : TimeProvider

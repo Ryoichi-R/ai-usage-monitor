@@ -60,6 +60,15 @@ internal static partial class ObjCRuntime
     [LibraryImport(CoreGraphicsLibrary)]
     internal static partial int CGWindowLevelForKey(int key);
 
+    [LibraryImport(CoreGraphicsLibrary)]
+    internal static partial uint CGMainDisplayID();
+
+    [LibraryImport(CoreGraphicsLibrary)]
+    internal static partial uint CGDisplayIsOnline(uint display);
+
+    [LibraryImport(CoreGraphicsLibrary)]
+    internal static partial uint CGDisplayIsAsleep(uint display);
+
     private static nint Sel(string name) => sel_registerName(name);
 
     /// <summary>NSWindowならそのまま、NSViewならその所属ウィンドウを返す。どちらでもなければ0。</summary>

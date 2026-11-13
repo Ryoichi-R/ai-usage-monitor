@@ -391,6 +391,84 @@ public sealed class ClaudeUsageRuntimeTests
         Assert.Null(runtime.NextAttemptAt);
     }
 
+    [Fact]
+    public async Task ResumeWaitsForSetupAttemptToFailBeforeResettingBackoff()
+    {
+        var source = new ResumeSource();
+        var codes = new List<string>();
+        var runtime = new ClaudeUsageRuntime(_ => source, codes.Add);
+        runtime.Configure(Configuration("claude-a"), Now);
+        CancellationToken cancellation = TestContext.Current.CancellationToken;
+
+        Task<UsageSnapshot> setup = runtime.RefreshAsync(ClaudeUsageAcquisitionMode.OfficialCliOnly, true, Now, cancellation);
+        int consumed = 0;
+        Task resume = runtime.RefreshAfterResumeAsync(() => { consumed++; return true; }, cancellation);
+        Assert.False(resume.IsCompleted);
+        Assert.Equal(0, consumed);
+        Assert.Equal(1, source.Resets);
+
+        source.FinishFirst.TrySetResult();
+        await setup;
+        await resume.WaitAsync(TimeSpan.FromSeconds(5), cancellation);
+        Assert.Equal(2, source.Resets);
+        Assert.Equal(2, source.Attempts);
+        Assert.Null(source.NextAttemptAt);
+        Assert.Equal(1, consumed);
+        Assert.Single(codes, code => code == "claude-resume-refresh");
+        Assert.Equal(UsageAvailability.Available, runtime.Current(DateTimeOffset.UtcNow).Snapshot.Availability);
+        await runtime.StopAsync();
+    }
+
+    [Theory]
+    [InlineData(false, true, ClaudeUsageAcquisitionMode.Automatic)]
+    [InlineData(true, false, ClaudeUsageAcquisitionMode.Automatic)]
+    [InlineData(true, true, ClaudeUsageAcquisitionMode.StatusLineOnly)]
+    public async Task ResumeConsumesIneligibleRequestWithoutStartingCli(bool configured, bool enabled,
+        ClaudeUsageAcquisitionMode mode)
+    {
+        var source = new ResumeSource();
+        var runtime = new ClaudeUsageRuntime(_ => source);
+        if (configured) runtime.Configure(new("claude-a", "bridge", TimeSpan.FromSeconds(30), mode), Now);
+        int consumed = 0;
+
+        await runtime.RefreshAfterResumeAsync(() => { consumed++; return enabled; }, TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, consumed);
+        Assert.Equal(0, source.Resets);
+        Assert.Equal(0, source.Attempts);
+        await runtime.StopAsync();
+    }
+
+    private sealed class ResumeSource : IClaudeScheduledUsageSource
+    {
+        internal TaskCompletionSource FinishFirst { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal int Resets { get; private set; }
+        internal int Attempts { get; private set; }
+        public DateTimeOffset? NextAttemptAt { get; private set; }
+        public event Action<UsageSnapshot>? ProgressChanged { add { } remove { } }
+
+        public async Task<ClaudeUsageObservation> RefreshAsync(CancellationToken cancellationToken)
+        {
+            Assert.Null(NextAttemptAt);
+            if (++Attempts == 1)
+            {
+                await FinishFirst.Task.WaitAsync(cancellationToken);
+                NextAttemptAt = DateTimeOffset.UtcNow.AddMinutes(30);
+                return new(ClaudeUsageSourceKind.CliScreen, UsageSnapshot.Loading(UsageProvider.Claude, Now) with
+                {
+                    Availability = UsageAvailability.Error,
+                    Reason = "READY_TIMEOUT",
+                });
+            }
+            return new(ClaudeUsageSourceKind.CliScreen, Snapshot(40, DateTimeOffset.UtcNow));
+        }
+
+        public void Cancel() => FinishFirst.TrySetCanceled();
+        public void ResetRetry() { Resets++; NextAttemptAt = null; }
+        public void Recheck(bool releaseSafety) => throw new InvalidOperationException("Resume must preserve stops.");
+        public string DescribeStop() => string.Empty;
+    }
+
     private sealed class ScheduledSource : IClaudeScheduledUsageSource, IDisposable
     {
         private readonly TaskCompletionSource<ClaudeUsageObservation> _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);

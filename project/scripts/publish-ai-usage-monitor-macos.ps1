@@ -65,6 +65,7 @@ if ($LASTEXITCODE -ne 0) { throw 'ICNS_FAILED' }
 <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
 "@ | Set-Content -LiteralPath (Join-Path $contents 'Info.plist') -Encoding utf8NoBOM
+Copy-Item -LiteralPath (Join-Path $root 'src/AiUsageMonitor.App.Mac/PrivacyInfo.xcprivacy') -Destination $resources
 foreach ($document in @('LICENSE', 'THIRD-PARTY-NOTICES.md', 'README.md')) {
     Copy-Item -LiteralPath (Join-Path $root $document) -Destination $resources
 }

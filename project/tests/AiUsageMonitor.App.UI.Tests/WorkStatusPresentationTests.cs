@@ -1,3 +1,4 @@
+using AiUsageMonitor.TestSupport;
 using AiUsageMonitor.App.UI.ViewModels;
 using AiUsageMonitor.App.UI.Runtime;
 using AiUsageMonitor.App.UI.Views;
@@ -12,12 +13,40 @@ namespace AiUsageMonitor.App.UI.Tests;
 
 public sealed partial class WorkStatusPresentationTests
 {
+    [Fact]
+    public async Task UnreadableEventKeepsBothProvidersUnknownAndWarnedUntilRemoved()
+    {
+        string root = WorkStatusTestDirectory.Create("work-read-warning");
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            foreach (WorkProvider provider in Enum.GetValues<WorkProvider>())
+                WorkStatusCollector.WriteEvent(root, new(1, "start-" + provider, provider, "session", "turn", WorkEventKind.Started, now, true));
+            await using var runtime = new WorkStatusRuntime(root, (_, _) => { });
+            await runtime.PollAsync(TestContext.Current.CancellationToken);
+            string path = Path.Combine(root, "events", "damaged.json");
+            File.WriteAllText(path, "{");
+            var view = new WorkStatusViewModel();
+            for (int poll = 0; poll < 2; poll++)
+            {
+                WorkStatusViewSnapshot snapshot = await runtime.PollAsync(TestContext.Current.CancellationToken);
+                view.Update(snapshot.Model, true, true, snapshot.Problem, now, snapshot.UnavailableProviders);
+                Assert.All(view.Rows, row => { Assert.True(row.HasDetail); Assert.Equal("—", row.Status); });
+            }
+            File.Delete(path);
+            WorkStatusViewSnapshot recovered = await runtime.PollAsync(TestContext.Current.CancellationToken);
+            view.Update(recovered.Model, true, true, recovered.Problem, now, recovered.UnavailableProviders);
+            Assert.All(view.Rows, row => { Assert.False(row.HasDetail); Assert.Equal("作業中 1", row.Status); });
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
     [Theory]
     [InlineData(WorkEventKind.StopCandidate)]
     [InlineData(WorkEventKind.Completed)]
     public async Task ClaudeBusyRecoversFromResponseEndWithoutChangingSavedHookState(WorkEventKind stopKind)
     {
-        string root = Directory.CreateTempSubdirectory().FullName;
+        string root = WorkStatusTestDirectory.Create("work-presentation");
         try
         {
             var now = DateTimeOffset.UtcNow;
@@ -299,6 +328,42 @@ public sealed partial class WorkStatusPresentationTests
         Assert.NotNull(failed.Problem);
         Assert.Equal(id, Assert.Single(failed.Model.Notices).Id);
         Assert.True(File.Exists(Path.Combine(root, "retained-state.json")));
+    }
+
+    [Fact]
+    public async Task PollAcknowledgementAndImportPreserveEachOthersChangesAndPublishedViews()
+    {
+        string root = WorkStatusTestDirectory.Create("work-concurrent-runtime");
+        try
+        {
+            string legacy = Directory.CreateDirectory(Path.Combine(root, "old")).FullName;
+            string currentRoot = Path.Combine(root, "new");
+            const string text = """{"Version":1,"Sessions":[],"Notices":{"CodexDesktop":[{"Id":"legacy-event","SessionId":"legacy-session","TurnId":"legacy-turn","State":"Completed","At":"2026-11-03T00:00:00Z"}]}}""";
+            File.WriteAllText(Path.Combine(legacy, "state.json"), text);
+            await using var runtime = new WorkStatusRuntime(currentRoot, (_, _) => { });
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            WorkStatusCollector.WriteEvent(currentRoot, new(1, "existing", WorkProvider.CodexDesktop,
+                "existing-session", "turn", WorkEventKind.Completed, now, true));
+            WorkStatusView original = (await runtime.PollAsync(CancellationToken.None)).Model;
+            string id = Assert.Single(original.Notices).Id;
+
+            WorkStatusCollector.WriteEvent(currentRoot, new(1, "arrival", WorkProvider.ClaudeCode,
+                "new-session", "turn", WorkEventKind.Completed, now, true));
+            Task poll = runtime.PollAsync(CancellationToken.None);
+            Task ack = runtime.AcknowledgeAsync([id]);
+            Task<bool> import = runtime.ImportLegacyAsync(legacy);
+            await Task.WhenAll(poll, ack, import);
+
+            Assert.True(await import);
+            Assert.Equal(id, Assert.Single(original.Notices).Id);
+            WorkStatusModel saved = new WorkStatusStore(currentRoot).Load();
+            Assert.Contains(id, saved.AcknowledgedIds);
+            Assert.Equal(2, saved.Notices.Count);
+            Assert.Contains(saved.Notices, notice => notice.Provider == WorkProvider.CodexDesktop && notice.State == WorkSessionState.Completed);
+            Assert.Contains(saved.Notices, notice => notice.Provider == WorkProvider.ClaudeCode && notice.SessionId == "new-session");
+            Assert.Equal(text, File.ReadAllText(Path.Combine(legacy, "state.json")));
+        }
+        finally { Directory.Delete(root, recursive: true); }
     }
 
     [Fact]

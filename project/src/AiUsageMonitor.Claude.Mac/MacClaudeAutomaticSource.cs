@@ -59,6 +59,7 @@ public sealed class MacClaudeAutomaticSource : IClaudeScheduledUsageSource, IDis
 
     public void Cancel() => _lifetime.Cancel();
     public void Dispose() => _lifetime.Dispose();
+    // Manual and resume retries reset only the in-memory schedule. Persistent stops are enforced on every attempt.
     public void ResetRetry() { lock (_sync) { _next = null; _failures = 0; } }
     public void Recheck(bool releaseSafety)
     {
@@ -105,6 +106,9 @@ public sealed class MacClaudeAutomaticSource : IClaudeScheduledUsageSource, IDis
                     unresolved.Pending ??= new(Guid.NewGuid(), "unresolved", _time.GetUtcNow());
                     _store.Write(unresolved);
                 }
+                // Discovery failures have no runnable candidate. Resume normal inspection instead
+                // of leaving an expired acquisition deadline armed; durable safety stops remain intact.
+                ResetRetry();
                 return Failure(failure, failure == "CLAUDE_NOT_INSTALLED" ? UsageAvailability.NotInstalled : UsageAvailability.Unsupported);
             }
             identity = MacClaudeBinaryIdentity.Parse(candidate.Identity ?? "").Key;

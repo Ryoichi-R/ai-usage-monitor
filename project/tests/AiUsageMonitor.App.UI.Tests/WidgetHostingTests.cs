@@ -1,3 +1,5 @@
+using AiUsageMonitor.TestSupport;
+using AiUsageMonitor.Claude.Acquisition;
 using AiUsageMonitor.App.UI.Hosting;
 using AiUsageMonitor.Core.Settings;
 using AiUsageMonitor.Core.WorkStatus;
@@ -382,6 +384,199 @@ public sealed class WidgetHostingTests
         await WaitForAsync(() => host.ViewModel!.WorkStatus.Rows[0].NoticeIds.Count == 0);
         Assert.Single(store.Load().AcknowledgedIds);
         Assert.False(FindItem().IsEnabled);
+    }
+
+    [AvaloniaFact]
+    public async Task ResumeBypassesTheClaudeScheduleAndCoalescesWhileBusyWithoutRefreshingCodex()
+    {
+        string root = WorkStatusTestDirectory.Create("resume-host");
+        try
+        {
+            var paths = new TestPaths(root);
+            string codexHome = Directory.CreateDirectory(Path.Combine(root, ".codex")).FullName;
+            using (var store = new FileSystemSettingsStore(paths.SettingsFilePath))
+                await store.SaveAsync(new AppSettings
+                {
+                    ShowCodexUsage = true,
+                    CodexExecutablePath = Environment.ProcessPath,
+                    ShowClaudeUsage = true,
+                    ClaudeSetupCompleted = true,
+                });
+
+            Action? resume = null;
+            int monitorStarts = 0;
+            var source = new ResumeHostSource();
+            var codex = new CountingCodexLauncher();
+            var codes = new List<string>();
+            var services = new WidgetHostServices
+            {
+                AppPaths = paths,
+                Startup = new FakeStartup(),
+                ShellOpener = new FakeShell(),
+                CreateLayerController = () => new FakeLayer(),
+                ClaudeSourceFactory = _ => source,
+                ClaudeWorkspace = new AppPathClaudeWorkspace(paths),
+                ClaudeBridgePath = Path.Combine(root, "bridge"),
+                ReadmePath = Path.Combine(root, "README.md"),
+                UserProfile = root,
+                InheritedCodexHome = codexHome,
+                CodexProcessLauncher = codex,
+                StartPowerResumeMonitor = request =>
+                {
+                    monitorStarts++;
+                    resume = request;
+                    return source;
+                },
+                Diagnostic = (code, _) => codes.Add(code),
+            };
+            await using var host = new WidgetHost(services, () => { });
+            await host.StartAsync();
+            Assert.Equal(1, source.Attempts);
+            Assert.NotNull(source.NextAttemptAt);
+            Assert.True(codex.Starts > 0);
+            int initialCodexStarts = codex.Starts;
+
+            Assert.NotNull(resume);
+            await Task.Run(resume, TestContext.Current.CancellationToken);
+            await WaitForAsync(() => source.Attempts == 2);
+            Assert.Equal(initialCodexStarts, codex.Starts);
+            Assert.Equal(1, source.Resets);
+
+            Task manual = host.RequestRefreshAsync();
+            await WaitForAsync(() => source.Attempts == 3);
+            Assert.True(codex.Starts > initialCodexStarts);
+            int manualCodexStarts = codex.Starts;
+            resume();
+            resume();
+            Assert.Equal(2, source.Resets);
+            source.FinishBusy.TrySetResult();
+            await manual;
+            await WaitForAsync(() => source.Attempts == 4);
+            Assert.Equal(3, source.Resets);
+            Assert.Null(source.NextAttemptAt);
+            Assert.Equal(manualCodexStarts, codex.Starts);
+            Assert.Equal(2, codes.Count(code => code == "claude-resume-refresh"));
+
+            await host.ApplySavedSettingsAsync(host.Settings with { RefreshIntervalSeconds = 600 }, true, true);
+            Assert.Equal(1, monitorStarts);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [AvaloniaFact]
+    public async Task ExpiredClaudeRetryWaitsForRefreshOwnerWithoutBlockingUiOrLosingTheRetry()
+    {
+        string root = WorkStatusTestDirectory.Create("poll-gate");
+        try
+        {
+            var paths = new TestPaths(root);
+            var source = new ExpiredRetrySource();
+            var services = new WidgetHostServices
+            {
+                AppPaths = paths,
+                Startup = new FakeStartup(),
+                ShellOpener = new FakeShell(),
+                CreateLayerController = () => new FakeLayer(),
+                ClaudeSourceFactory = _ => source,
+                ClaudeWorkspace = new AppPathClaudeWorkspace(paths),
+                ClaudeBridgePath = Path.Combine(root, "bridge"),
+                ReadmePath = Path.Combine(root, "README.md"),
+                UserProfile = root,
+                InheritedCodexHome = null,
+            };
+            await using var host = new WidgetHost(services, () => { });
+            const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            typeof(WidgetHost).GetField("_viewModel", flags)!.SetValue(host, new AiUsageMonitor.App.UI.ViewModels.UsageViewModel());
+            typeof(WidgetHost).GetField("_settings", flags)!.SetValue(host, new AppSettings { ShowCodexUsage = false, ShowClaudeUsage = true });
+            var runtime = (AiUsageMonitor.App.UI.Runtime.ClaudeUsageRuntime)typeof(WidgetHost).GetField("_claudeRuntime", flags)!.GetValue(host)!;
+            runtime.Configure(new(null, services.ClaudeBridgePath, TimeSpan.FromSeconds(5)), DateTimeOffset.UtcNow);
+            var gate = (SemaphoreSlim)typeof(WidgetHost).GetField("_refreshGate", flags)!.GetValue(host)!;
+            await gate.WaitAsync(TestContext.Current.CancellationToken);
+            // Bound the old implementation's synchronous spin so a regression fails instead of hanging the suite.
+            using var cancel = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            Task loop = (Task)typeof(WidgetHost).GetMethod("PollClaudeAsync", flags)!.Invoke(host, [cancel.Token])!;
+            bool released = false;
+            try
+            {
+                Assert.False(loop.IsCompleted);
+                Assert.False(cancel.IsCancellationRequested);
+                Assert.Equal(0, source.Attempts);
+                // This continuation runs on the same UI thread that polling must yield to.
+                await Dispatcher.UIThread.InvokeAsync(() => { gate.Release(); released = true; });
+                await source.Started.Task.WaitAsync(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+                Assert.Equal(1, source.Attempts);
+                Assert.Equal(0, source.Resets); // Periodic admission must not reset safety/backoff like a manual request.
+            }
+            finally
+            {
+                if (!released) gate.Release();
+                cancel.Cancel();
+                try { await loop; } catch (OperationCanceledException) { }
+            }
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    private sealed class ExpiredRetrySource : IClaudeScheduledUsageSource
+    {
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int Attempts { get; private set; }
+        public int Resets { get; private set; }
+        public DateTimeOffset? NextAttemptAt { get; private set; } = DateTimeOffset.UtcNow.AddSeconds(-1);
+        public event Action<UsageSnapshot>? ProgressChanged { add { } remove { } }
+        public Task<ClaudeUsageObservation> RefreshAsync(CancellationToken cancellationToken)
+        {
+            Attempts++;
+            NextAttemptAt = null;
+            Started.TrySetResult();
+            return Task.FromResult(new ClaudeUsageObservation(ClaudeUsageSourceKind.CliScreen,
+                UsageSnapshot.Loading(UsageProvider.Claude, DateTimeOffset.UtcNow) with { Reason = "CLAUDE_NOT_INSTALLED" }));
+        }
+        public void Cancel() { }
+        public void ResetRetry() { Resets++; NextAttemptAt = null; }
+        public void Recheck(bool releaseSafety) { }
+        public string DescribeStop() => string.Empty;
+    }
+
+    private sealed class CountingCodexLauncher : IManagedProcessLauncher
+    {
+        private int _starts;
+        public int Starts => Volatile.Read(ref _starts);
+
+        public Task<IManagedProcessSession> StartAsync(System.Diagnostics.ProcessStartInfo startInfo, CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref _starts);
+            throw new IOException("synthetic app-server failure");
+        }
+    }
+
+    private sealed class ResumeHostSource : IClaudeScheduledUsageSource, IAsyncDisposable
+    {
+        public TaskCompletionSource FinishBusy { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int Attempts { get; private set; }
+        public int Resets { get; private set; }
+        public DateTimeOffset? NextAttemptAt { get; private set; }
+        public event Action<UsageSnapshot>? ProgressChanged { add { } remove { } }
+
+        public async Task<ClaudeUsageObservation> RefreshAsync(CancellationToken cancellationToken)
+        {
+            Assert.Null(NextAttemptAt);
+            int attempt = ++Attempts;
+            if (attempt == 3) await FinishBusy.Task.WaitAsync(cancellationToken);
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            if (attempt is 1 or 3) NextAttemptAt = now.AddMinutes(30);
+            return new(ClaudeUsageSourceKind.CliScreen, UsageSnapshot.Loading(UsageProvider.Claude, now) with
+            {
+                Availability = UsageAvailability.Error,
+                Reason = "READY_TIMEOUT",
+            });
+        }
+
+        public void Cancel() => FinishBusy.TrySetCanceled();
+        public void ResetRetry() { Resets++; NextAttemptAt = null; }
+        public void Recheck(bool releaseSafety) => throw new InvalidOperationException("Resume must preserve stops.");
+        public string DescribeStop() => string.Empty;
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
     private static WidgetHostServices WorkStatusTrayServices(IAppPathProvider paths, string root, WindowIcon icon,
